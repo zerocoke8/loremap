@@ -560,8 +560,8 @@ const IMG_MODEL = 'gemini-3.1-flash-image-preview';
  *                     예) { apiKey:'…', authDomain:'…', databaseURL:'https://….firebasedatabase.app', projectId:'…' }
  *   API 키와 마스터 코드는 Worker의 비밀 변수에만 존재합니다. 이 파일에는 넣지 마세요.
  * ================================================================== */
-const API_BASE = '';
-const FIREBASE_CONFIG = null;
+const API_BASE = 'https://worldmind-api.korspen.workers.dev';
+const FIREBASE_CONFIG = { apiKey: "AIzaSyDNZOAhJ4fNPSQ836T1MTHxE90wbGQn1l4", authDomain: "worldmind-f1241.firebaseapp.com", databaseURL: "https://worldmind-f1241-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "worldmind-f1241", storageBucket: "worldmind-f1241.firebasestorage.app", messagingSenderId: "1071479623712", appId: "1:1071479623712:web:d358306d33cd98d38a6c45",measurementId: "G-DFHS17GTTE" };
 
 /* §2-2 세션 ID (자기 쓰기 에코 무시용) */
 const FB_SID = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
