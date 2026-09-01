@@ -14,8 +14,9 @@
  *  - TOKEN_SECRET       (선택) 미설정 시 MASTER_CODE에서 파생 → 코드를 바꾸면 기존 토큰이 모두 만료됨
  *
  * 일반 변수 (Text)
- *  - ALLOWED_ORIGINS    허용할 사이트 주소. 쉼표로 여러 개. 예) https://myname.github.io
+ *  - ALLOWED_ORIGINS    허용할 사이트 주소(도메인까지만, 끝에 / 없이). 쉼표로 여러 개. 예) https://myname.github.io
  *                       로컬 파일(file://)로 테스트하려면 null 을 추가. 전부 허용은 *
+ *                       브라우저 페이지에서 오는 요청(Origin 헤더 있음)만 검사하며, 주소창 직접 입력·curl은 통과
  */
 
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;   // 12시간
@@ -54,9 +55,9 @@ function allowedList(env){
   return String(env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
 }
 function originAllowed(origin, env){
+  if(!origin) return true;   // 주소창 직접 입력·curl 등 Origin 없는 요청은 CORS 대상이 아님 (실제 보호는 토큰)
   const list = allowedList(env);
   if(list.includes('*')) return true;
-  if(!origin) return false;
   return list.includes(origin);
 }
 function corsHeaders(origin, env){

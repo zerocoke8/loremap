@@ -27,6 +27,8 @@ r = await call('/api/health', {method:'GET', origin:'https://evil.example'});
 T('허용되지 않은 오리진 403', r.status === 403);
 r = await call('/api/health', {method:'GET', origin:'null'});
 T('로컬 파일(null) 허용 시 통과', r.status === 200 && (await r.json()).ok === true);
+r = await call('/api/health', {method:'GET', origin:''});
+T('Origin 없는 요청(주소창 직접 입력·curl) 통과', r.status === 200 && (await r.json()).ok === true);
 r = await call('/api/health', {method:'GET'}, {...env, ALLOWED_ORIGINS:'*'});
 T('와일드카드 허용', r.status === 200 && r.headers.get('Access-Control-Allow-Origin') === '*');
 

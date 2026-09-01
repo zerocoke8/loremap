@@ -33,7 +33,7 @@
    - 내 PC의 파일(file://)로 열어 테스트하려면 `,null` 을 덧붙입니다: `https://myname.github.io,null`
 
 6. 변수 저장 후 **Deploy** 를 한 번 더 누릅니다.
-7. 확인: 브라우저에서 `https://worldmind-api.<계정명>.workers.dev/api/health` 를 열면 `{"ok":true,…}` 가 보여야 합니다. Worker 주소는 Worker 화면 상단(Preview / Visit)에 표시됩니다.
+7. 확인: 브라우저 주소창에 `https://worldmind-api.<계정명>.workers.dev/api/health` 를 입력해 열면 `{"ok":true,…}` 가 보여야 합니다. Worker 주소는 Worker 화면 상단(Preview / Visit)에 표시됩니다.
 
 ## 2. index.html 값 채우기
 
@@ -85,7 +85,7 @@ npx wrangler deploy
 | 증상 | 원인 / 조치 |
 |---|---|
 | 🔒 눌렀을 때 "API_BASE가 설정되지 않았습니다" | index.html 의 `API_BASE` 가 비어 있음 |
-| "origin not allowed" | `ALLOWED_ORIGINS` 와 실제 사이트 주소가 다름 (https, 도메인 철자 확인) |
+| "origin not allowed: https://…" | `ALLOWED_ORIGINS` 와 실제 사이트 주소가 다름. 도메인까지만(`https://myname.github.io`), 끝에 `/`나 경로 없이, https 철자 확인 |
 | 코드가 맞는데 "일치하지 않습니다" | `MASTER_CODE` 앞뒤 공백, 또는 변수 저장 후 Deploy 를 안 누름 |
 | AI 호출 시 "MASTER_CODE 비밀 변수가…" / "ANTHROPIC_API_KEY…" | 해당 Secret 미등록 |
 | 상태 칩이 계속 "연결 중…" | `FIREBASE_CONFIG` 의 `databaseURL` 확인, Firebase 규칙이 읽기/쓰기를 허용하는지 확인 |
