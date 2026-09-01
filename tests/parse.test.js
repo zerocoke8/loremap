@@ -1,0 +1,33 @@
+/* §6-3 AI JSON 3단 방어 + Firebase 설정 파서 + CJK 줄바꿈 */
+const {boot, makeT, wait} = require('./helpers');
+const {T, done} = makeT();
+(async () => {
+  const {E} = boot(); await wait(200);
+  const P = (txt, kind) => E(`parseAIJson(${JSON.stringify(txt)}${kind ? ',' + JSON.stringify(kind) : ''})`);
+  let r = P('{"a":1,"b":[1,2]}');
+  T('정상 객체 직접 파싱', r && r.a === 1 && r.b.length === 2);
+  r = P('네, 결과입니다.\n```json\n{"nodes":[{"name":"탑","desc":"높다"}]}\n```\n이상입니다.');
+  T('펜스+전후 텍스트', r && r.nodes?.[0]?.name === '탑');
+  r = P('결과: {"name":"그 \\"운명\\"의 {탑}","desc":"a}b{c"} 끝');
+  T('문자열 내 괄호·따옴표', r && r.name.includes('{탑}') && r.desc === 'a}b{c');
+  r = P('{"nodes":[{"name":"아린","desc":"긴 설명이 여기서 잘');
+  T('문자열 중간 잘림 복구', r && r.nodes?.[0]?.name === '아린' && r.nodes[0].desc.startsWith('긴 설명'));
+  r = P('{"nodes":[{"name":"A","desc":"x"},{"name":"B","de');
+  T('객체 중간 잘림 복구', r && r.nodes?.length === 2 && r.nodes[1].name === 'B');
+  r = P('{"time":"1년 전","body":"전쟁 발발","order":');
+  T('값 없는 키 잘림', r && r.body === '전쟁 발발');
+  r = P('[{"label":"스승","desc":"가르침"},{"label":"제자","desc":"배', 'array');
+  T('배열 잘림 복구', Array.isArray(r) && r.length === 2 && r[1].label === '제자');
+  r = P('잡음 [ {"a":1}, 깨진{{{, {"b":2}, {"c": ', 'array');
+  T('부분 수집(쓰레기 건너뜀)', Array.isArray(r) && r.some(o => o.a === 1) && r.some(o => o.b === 2));
+  r = P('```json\n{"nodes":[{"type":"char","name":"공주","desc":"후계"},{"type":"group","name":"해적단","desc":"추적자"}],"edges":[{"from":"해적단","to":"공주","label":"추적","desc":"현상금', 'object');
+  T('실사용 잘림(nodes+edges 유지)', r && r.nodes?.length === 2 && Array.isArray(r.edges) && r.edges.length === 1);
+  T('빈 입력 null', P('') === null && P('설명만 있는 텍스트') === null);
+  T('extractBlock 중첩', E(`extractBlock('x{"a":{"b":[1,{"c":2}]}}y','{','}')`) === '{"a":{"b":[1,{"c":2}]}}');
+  let c = E(`parseFbConfig("{ apiKey: 'k2', databaseURL: 'https://y.firebasedatabase.app', projectId: 'p', }")`);
+  T('FB 객체 리터럴(따옴표 없는 키·단일따옴표·트레일링 콤마)', c && c.apiKey === 'k2' && c.databaseURL === 'https://y.firebasedatabase.app');
+  c = E(`parseFbConfig('// 붙여넣기\\nconst firebaseConfig = {\\n  apiKey: "k3", // 내 키\\n  databaseURL: "https://z.firebasedatabase.app"\\n};')`);
+  T('FB const 선언문+주석 (URL의 // 보존)', c && c.apiKey === 'k3' && c.databaseURL === 'https://z.firebasedatabase.app');
+  T('wrapCJK 분할·상한', JSON.stringify(E(`wrapCJK('가나다라마바사아',4)`)) === '["가나다라","마바사아"]' && E(`wrapCJK('가나다라마바사아자차카타파하호',4).length`) === 3);
+  done();
+})();

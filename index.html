@@ -1,0 +1,3243 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WorldMind — 세계관 마인드맵</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🌌</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ================= §7-1 색상 토큰 (스펙 그대로) ================= */
+:root{
+  --bg:#0a0b0f; --bg2:#10121a; --bg3:#161824;
+  --surface:#1c1f2e; --surface2:#242740;
+  --border:#2e3250; --border2:#3d4270;
+  --accent:#7c6af7; --accent2:#a594ff;
+  --gold:#d4a947; --gold2:#f0c96a;
+  --text:#e8eaf6; --text2:#9da3c8; --text3:#5a607a;
+  --danger:#e05c7a; --ok:#4ade9e;
+  --shadow:0 8px 32px rgba(0,0,0,.6); --shadow-sm:0 4px 18px rgba(0,0,0,.45);
+  --glass:rgba(28,31,46,.96); --ov-bg:rgba(6,7,11,.66); --grid:rgba(157,163,200,.13);
+  --line-faint:rgba(255,255,255,.13); --edge:#565d8f; --edge-parent:#8b93c9;
+  --icon-shadow:drop-shadow(0 0 6px rgba(0,0,0,.6));
+  --rp-w:320px;
+  --c-world:#9b59d6;  --c-world-bg:rgba(74,32,96,.65);
+  --c-group:#4a9edd;  --c-group-bg:rgba(26,58,92,.65);
+  --c-space:#3ecfb8;  --c-space-bg:rgba(20,70,65,.65);
+  --c-char:#6bbd4a;   --c-char-bg:rgba(42,64,32,.65);
+  --c-item:#e8b84b;   --c-item-bg:rgba(70,55,10,.65);
+  --c-trait:#d4914a;  --c-trait-bg:rgba(74,48,16,.65);
+  --c-custom:#5a6090; --c-custom-bg:rgba(30,32,53,.65);
+}
+/* 라이트 테마(베이지 배경 + 검은 글씨) — 설정에서 선택, wm_theme 저장 */
+body.light{
+  --bg:#f4eee3; --bg2:#ece5d7; --bg3:#e3dbc9;
+  --surface:#fbf8f1; --surface2:#f2ece0;
+  --border:#d8cfbb; --border2:#c2b69d;
+  --accent:#6a5ae0; --accent2:#5344cc;
+  --gold:#b8891f; --gold2:#8f6a12;
+  --text:#1f2230; --text2:#4b5168; --text3:#8b90a6;
+  --danger:#c53a5e; --ok:#1e9a67;
+  --shadow:0 8px 28px rgba(70,55,30,.18); --shadow-sm:0 4px 14px rgba(70,55,30,.14);
+  --glass:rgba(251,248,241,.97); --ov-bg:rgba(60,50,35,.45); --grid:rgba(90,80,60,.16);
+  --line-faint:rgba(0,0,0,.12); --edge:#8d8570; --edge-parent:#6a6280; --icon-shadow:none;
+  --c-world:#8a45c9; --c-world-bg:rgba(155,89,214,.13);
+  --c-group:#3383c4; --c-group-bg:rgba(74,158,221,.15);
+  --c-space:#1fa893; --c-space-bg:rgba(62,207,184,.17);
+  --c-char:#579c3a;  --c-char-bg:rgba(107,189,74,.17);
+  --c-item:#c9961f;  --c-item-bg:rgba(232,184,75,.22);
+  --c-trait:#b5762f; --c-trait-bg:rgba(212,145,74,.2);
+  --c-custom:#6b7199;--c-custom-bg:rgba(90,96,144,.13);
+  background:
+    radial-gradient(1200px 700px at 70% -10%, rgba(124,106,247,.08), transparent 60%),
+    radial-gradient(900px 600px at 10% 110%, rgba(184,137,31,.08), transparent 55%),
+    var(--bg);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1200px 700px at 70% -10%, rgba(124,106,247,.09), transparent 60%),
+    radial-gradient(900px 600px at 10% 110%, rgba(212,169,71,.05), transparent 55%),
+    var(--bg);
+  color:var(--text);
+  font-family:'Noto Sans KR',sans-serif;
+  font-size:14px;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,textarea,select{
+  font-family:inherit;font-size:13px;color:var(--text);
+  background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+  padding:8px 10px;width:100%;
+}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
+textarea{resize:vertical;line-height:1.55}
+:focus-visible{outline:2px solid var(--accent2);outline-offset:1px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:5px}
+::-webkit-scrollbar-track{background:transparent}
+.hide{display:none!important}
+[hidden]{display:none!important}
+
+/* ================= 탭 바 ================= */
+#tabbar{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 12px 0;background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  min-height:42px;flex-wrap:wrap;
+}
+.logo{
+  font-family:'Cinzel',serif;font-weight:700;font-size:17px;letter-spacing:.14em;
+  background:linear-gradient(120deg,var(--gold2),var(--gold) 55%,#9a7527);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  padding:0 14px 6px 2px;user-select:none;text-shadow:0 0 24px rgba(212,169,71,.25);
+}
+#tabs{display:flex;gap:4px;flex-wrap:wrap;flex:1;min-width:0}
+.tab{
+  display:flex;align-items:center;gap:2px;max-width:220px;
+  background:var(--bg3);border:1px solid var(--border);border-bottom:none;
+  border-radius:10px 10px 0 0;padding:6px 8px 7px 12px;
+  color:var(--text2);transition:background .15s,color .15s;
+}
+.tab .tt{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+.tab.act{background:var(--surface2);color:var(--text);border-color:var(--border2);box-shadow:0 -2px 12px rgba(124,106,247,.12) inset}
+.tab.act .tt{font-weight:500}
+.tacts{display:none;gap:1px;margin-left:4px}
+body.edit .tab:hover .tacts,body.edit .tab.act .tacts{display:inline-flex}
+.ta{font-size:11px;color:var(--text3);padding:2px 4px;border-radius:5px;line-height:1}
+.ta:hover{color:var(--text);background:var(--border)}
+.ta.td:hover{color:var(--danger)}
+.tabadd{
+  font-size:15px;color:var(--text3);padding:3px 10px 5px;border-radius:8px;margin-bottom:4px;
+}
+.tabadd:hover{color:var(--gold2);background:var(--bg3)}
+
+/* ================= 탑바 ================= */
+#topbar{
+  display:flex;align-items:center;gap:6px;padding:8px 12px;
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  flex-wrap:wrap;position:relative;z-index:30;
+}
+.tb{
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--surface);border:1px solid var(--border);border-radius:9px;
+  padding:7px 12px;font-size:13px;color:var(--text2);
+  transition:border-color .15s,color .15s,background .15s;white-space:nowrap;
+}
+.tb:hover{border-color:var(--accent);color:var(--text)}
+.tb.gold{border-color:rgba(212,169,71,.45);color:var(--gold2)}
+.tb.gold:hover{border-color:var(--gold);background:rgba(212,169,71,.08)}
+.tb.on{border-color:var(--accent);color:var(--accent2);background:rgba(124,106,247,.1)}
+.tb:disabled{opacity:.4;cursor:not-allowed}
+.sp{flex:1}
+.eo{display:none}
+body.edit .eo{display:inline-flex}
+body.edit div.eo,body.edit span.eo{display:flex}
+
+/* 동기화 상태 칩 */
+#syncChip{
+  display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text3);
+  padding:6px 11px;border:1px solid var(--border);border-radius:20px;background:var(--bg3);
+}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--text3);flex:none}
+.dot.ok{background:var(--ok);box-shadow:0 0 8px var(--ok);animation:breathe 2.4s ease-in-out infinite}
+.dot.warn{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+.dot.err{background:var(--danger);box-shadow:0 0 8px var(--danger)}
+.dot.off{background:var(--text3)}
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.45}}
+
+/* ================= 메인 레이아웃 ================= */
+#main{flex:1;display:flex;min-height:0;position:relative}
+#cwrap{
+  flex:1;position:relative;overflow:hidden;min-width:0;
+  background:var(--bg);cursor:grab;touch-action:none;user-select:none;
+}
+#cwrap.panning{cursor:grabbing}
+#world{
+  position:absolute;left:0;top:0;width:4000px;height:4000px;
+  transform-origin:0 0;
+  background-image:radial-gradient(var(--grid) 1.1px, transparent 1.1px);
+  background-size:42px 42px;
+}
+#edgeSvg{position:absolute;left:0;top:0;width:4000px;height:4000px;pointer-events:none;overflow:visible}
+#edgeSvg .e-hit,#edgeSvg .e-lbl{pointer-events:auto;cursor:pointer}
+#nodes{position:absolute;left:0;top:0;width:4000px;height:4000px;pointer-events:none}
+
+/* ================= 노드 카드 ================= */
+.node{
+  position:absolute;pointer-events:auto;touch-action:none;
+  min-width:120px;max-width:240px;
+  border:1.5px solid var(--border2);border-radius:12px;
+  background:var(--surface);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+  box-shadow:var(--shadow-sm);
+  padding:9px 12px;cursor:pointer;user-select:none;
+  transition:box-shadow .18s,border-color .18s;
+}
+.node:hover{box-shadow:var(--shadow-sm),0 0 14px rgba(124,106,247,.18)}
+.node.drag{cursor:grabbing;opacity:.92}
+.nh{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.ni{font-size:15px;flex:none;filter:var(--icon-shadow)}
+.nn{font-size:13.5px;font-weight:500;line-height:1.35;word-break:keep-all;overflow-wrap:anywhere}
+.nt{font-size:10px;color:var(--text2);opacity:.85;border:1px solid var(--line-faint);border-radius:8px;padding:1px 6px;flex:none}
+.nd{
+  display:none;margin-top:8px;padding-top:7px;font-size:12px;line-height:1.6;color:var(--text2);
+  border-top:1px solid var(--line-faint);word-break:keep-all;overflow-wrap:anywhere;
+  max-height:200px;overflow:auto;
+}
+.node.exp .nd{display:block}
+.node.sel{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(165,148,255,.45),0 0 22px rgba(124,106,247,.35)}
+.t-world{border-color:var(--c-world);background:var(--c-world-bg)}
+.t-group{border-color:var(--c-group);background:var(--c-group-bg)}
+.t-space{border-color:var(--c-space);background:var(--c-space-bg)}
+.t-char{border-color:var(--c-char);background:var(--c-char-bg)}
+.t-item{border-color:var(--c-item);background:var(--c-item-bg)}
+.t-trait{border-color:var(--c-trait);background:var(--c-trait-bg)}
+.t-custom{border-color:var(--c-custom);background:var(--c-custom-bg)}
+.node.preview .nn{font-weight:700}
+.node.preview{animation:pulseGold 1.5s ease-in-out infinite}
+@keyframes pulseGold{
+  0%,100%{box-shadow:0 0 0 1px rgba(240,201,106,.6),0 0 14px rgba(212,169,71,.35)}
+  50%{box-shadow:0 0 0 3px rgba(240,201,106,.9),0 0 30px rgba(212,169,71,.65)}
+}
+@keyframes pulseLine{0%,100%{stroke-opacity:.55}50%{stroke-opacity:1}}
+
+/* 연결선 — 색 우선순위: 기본색 < --ec(상위 노드 색 모드) < 미리보기(preview) < 선택(esel) */
+.e-line{fill:none;stroke:var(--ec, var(--edge));stroke-width:2}
+.e-line.parent{stroke:var(--ec, var(--edge-parent));stroke-width:2.4}
+.e-line.normal{stroke-dasharray:6 5;stroke-width:1.8}
+.e-hit{fill:none;stroke:rgba(0,0,0,0);stroke-width:16}
+.e-lbl rect{fill:var(--glass);stroke:var(--ec, var(--border2));stroke-width:1;rx:7}
+.e-lbl text{fill:var(--text2);font-size:11.5px;font-family:'Noto Sans KR',sans-serif;text-anchor:middle}
+#edgeSvg g.preview .e-line{stroke:var(--gold2);animation:pulseLine 1.5s ease-in-out infinite}
+#edgeSvg g.preview .e-lbl rect{stroke:var(--gold)}
+#edgeSvg .e-lbl:hover rect{stroke:var(--accent2)}
+#edgeSvg g.esel .e-line{stroke:var(--accent2);filter:drop-shadow(0 0 5px rgba(165,148,255,.8))}
+#edgeSvg g.esel .e-lbl rect{stroke:var(--accent2)}
+#edgeSvg g.esel .e-lbl text{fill:var(--text)}
+
+/* 관계 상세 카드 (선 클릭 시 중앙에 표시) */
+.e-detail{
+  position:absolute;pointer-events:auto;touch-action:none;transform:translate(-50%,-50%);
+  min-width:160px;max-width:270px;
+  background:var(--glass);border:1px solid var(--ec, var(--accent2));border-radius:11px;
+  padding:10px 13px;box-shadow:var(--shadow),0 0 18px rgba(124,106,247,.3);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);cursor:default;user-select:none;
+}
+.e-detail.preview{border-color:var(--gold)}
+.ed-t{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px}
+.ed-tag{margin-left:auto;flex:none;font-size:10px;font-weight:400;color:var(--text2);border:1px solid var(--line-faint);border-radius:8px;padding:1px 6px}
+.ed-d{font-size:12px;line-height:1.6;color:var(--text2);white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;max-height:180px;overflow:auto}
+.ed-d.empty-d{color:var(--text3);font-style:italic}
+
+/* 캔버스 오버레이 요소 */
+#linkBanner{
+  position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:20;
+  display:flex;align-items:center;gap:10px;
+  background:var(--glass);border:1px solid var(--accent);border-radius:24px;
+  padding:9px 16px;font-size:13px;color:var(--accent2);box-shadow:var(--shadow);
+  backdrop-filter:blur(6px);white-space:nowrap;
+}
+#linkBanner button{font-size:12px;color:var(--text3);border:1px solid var(--border);border-radius:14px;padding:3px 10px}
+#linkBanner button:hover{color:var(--text);border-color:var(--border2)}
+#genOverlay{
+  position:absolute;inset:0;z-index:22;display:flex;flex-direction:column;gap:16px;
+  align-items:center;justify-content:center;background:var(--ov-bg);
+  backdrop-filter:blur(3px);font-size:14px;color:var(--gold2);
+}
+.spin{
+  width:38px;height:38px;border-radius:50%;
+  border:3px solid rgba(212,169,71,.2);border-top-color:var(--gold2);
+  animation:spin .9s linear infinite;
+}
+.spin.sm{width:20px;height:20px;border-width:2.5px}
+@keyframes spin{to{transform:rotate(360deg)}}
+#zoomCtl{
+  position:absolute;right:16px;bottom:16px;z-index:20;
+  display:flex;flex-direction:column;gap:6px;
+}
+#zoomCtl button{
+  width:38px;height:38px;border-radius:11px;font-size:16px;
+  background:var(--glass);border:1px solid var(--border);color:var(--text2);
+  backdrop-filter:blur(5px);
+}
+#zoomCtl button:hover{border-color:var(--accent);color:var(--text)}
+#aiPanel{
+  position:absolute;right:16px;bottom:16px;z-index:24;width:250px;
+  background:var(--glass);border:1px solid var(--gold);border-radius:14px;
+  padding:14px;box-shadow:var(--shadow),0 0 26px rgba(212,169,71,.22);
+  backdrop-filter:blur(8px);
+}
+#aiPanel .ai-h{font-size:13.5px;font-weight:700;color:var(--gold2);margin-bottom:7px}
+#aiPanel .ai-info{font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:11px}
+#aiPanel .ai-btns{display:flex;gap:6px;flex-wrap:wrap}
+#aiPanel .tb{padding:6px 10px;font-size:12.5px}
+
+/* ================= 우측 패널 ================= */
+#rp{
+  width:var(--rp-w);flex:none;display:flex;flex-direction:column;min-height:0;
+  background:var(--bg2);border-left:1px solid var(--border);
+}
+.rp-h{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:13px 16px;border-bottom:1px solid var(--border);
+}
+.rp-h span{font-weight:700;font-size:14px;letter-spacing:.02em}
+.rp-h button{color:var(--text3);font-size:14px;padding:2px 6px;border-radius:6px}
+.rp-h button:hover{color:var(--text);background:var(--bg3)}
+.rp-b{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-height:0}
+.rp-sec{font-size:12px;color:var(--text3);font-weight:500;letter-spacing:.04em;margin-bottom:-4px}
+.btnrow{display:flex;gap:7px;flex-wrap:wrap}
+.refgrid{display:flex;gap:8px}
+.ref-slot{
+  position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;
+  border:1px solid var(--border);background:var(--bg3);
+  display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:20px;
+}
+.ref-slot img{width:100%;height:100%;object-fit:cover}
+.ref-slot .rx{
+  position:absolute;top:3px;right:3px;width:19px;height:19px;border-radius:50%;
+  background:var(--glass);color:var(--text2);font-size:11px;line-height:19px;text-align:center;
+}
+.ref-slot .rx:hover{color:var(--danger)}
+.ref-add{cursor:pointer;border-style:dashed}
+.ref-add:hover{border-color:var(--accent);color:var(--accent2)}
+
+/* 대화 패널 */
+#rpChat{padding:0}
+#chatLog{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:88%;padding:9px 12px;border-radius:13px;font-size:13px;line-height:1.65;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
+.msg.u{align-self:flex-end;background:rgba(124,106,247,.16);border:1px solid rgba(124,106,247,.4);border-bottom-right-radius:4px}
+.msg.a{align-self:flex-start;background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:4px;color:var(--text2)}
+.msg.a.load{color:var(--text3);font-style:italic}
+.chat-in{display:flex;gap:7px;padding:11px 13px;border-top:1px solid var(--border);align-items:flex-end}
+.chat-in textarea{flex:1;min-height:40px;max-height:120px}
+.chat-in button{flex:none;padding:9px 13px;border-radius:9px;background:var(--accent);color:#fff;font-size:13px;font-weight:500}
+.chat-in button:hover{background:var(--accent2)}
+.chat-in button:disabled{opacity:.5}
+
+/* 사건 패널 */
+.ev{
+  background:var(--surface);border:1px solid var(--border);border-radius:11px;
+  padding:10px 12px;display:flex;flex-direction:column;gap:5px;
+}
+.ev-top{display:flex;align-items:center;gap:8px}
+.ev-o{
+  flex:none;font-size:10.5px;color:var(--gold2);border:1px solid rgba(212,169,71,.4);
+  border-radius:9px;padding:1px 7px;font-variant-numeric:tabular-nums;
+}
+.ev-t{font-size:12px;color:var(--accent2);flex:1;font-weight:500}
+.ev-acts{display:none;gap:2px}
+body.edit .ev:hover .ev-acts{display:inline-flex}
+.ev-acts button{font-size:11px;color:var(--text3);padding:2px 5px;border-radius:5px}
+.ev-acts button:hover{color:var(--text);background:var(--bg3)}
+.ev-b{font-size:12.5px;line-height:1.6;color:var(--text2);white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
+.empty{color:var(--text3);font-size:12.5px;text-align:center;padding:22px 0}
+
+/* ================= 컨텍스트 메뉴 ================= */
+#ctxMenu{
+  position:fixed;z-index:80;min-width:172px;
+  background:var(--surface);border:1px solid var(--border2);border-radius:11px;
+  box-shadow:var(--shadow);padding:5px;
+}
+.cm-i{
+  display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+  padding:8px 11px;border-radius:8px;font-size:13px;color:var(--text2);
+}
+.cm-i:hover{background:var(--surface2);color:var(--text)}
+.cm-i.danger{color:var(--danger)}
+.cm-i.danger:hover{background:rgba(224,92,122,.12)}
+.cm-sep{height:1px;background:var(--border);margin:4px 7px}
+
+/* ================= 모달 ================= */
+.ov{
+  position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;
+  background:var(--ov-bg);backdrop-filter:blur(4px);padding:20px;
+  animation:fadeIn .16s ease;
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.dlg{
+  width:min(430px,100%);max-height:88vh;display:flex;flex-direction:column;
+  background:var(--surface);border:1px solid var(--border2);border-radius:15px;
+  box-shadow:var(--shadow);animation:up .2s ease;
+}
+.dlg.wide{width:min(560px,100%)}
+@keyframes up{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
+.dlg-h{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px;border-bottom:1px solid var(--border);
+}
+.dlg-h span{font-size:14.5px;font-weight:700;border-left:3px solid var(--gold);padding-left:10px}
+.dlg-h .x{color:var(--text3);font-size:14px;padding:3px 7px;border-radius:7px}
+.dlg-h .x:hover{color:var(--text);background:var(--bg3)}
+.dlg-b{padding:16px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:11px;font-size:13px;line-height:1.65;min-height:0}
+.dlg-b label{font-size:12px;color:var(--text3);display:block;margin-bottom:5px}
+.dlg-f{display:flex;justify-content:flex-end;gap:8px;padding:13px 18px;border-top:1px solid var(--border)}
+.btn{
+  padding:8px 16px;border-radius:9px;font-size:13px;
+  background:var(--bg3);border:1px solid var(--border);color:var(--text2);
+}
+.btn:hover{border-color:var(--border2);color:var(--text)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+.btn.pri:hover{background:var(--accent2);border-color:var(--accent2)}
+.btn.gold{background:rgba(212,169,71,.14);border-color:var(--gold);color:var(--gold2)}
+.btn.gold:hover{background:rgba(212,169,71,.24)}
+.btn.dngr{background:rgba(224,92,122,.12);border-color:var(--danger);color:var(--danger)}
+.btn.dngr:hover{background:rgba(224,92,122,.22)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+/* 설정 — 테마 선택 */
+.theme-opts{display:flex;gap:8px}
+.dlg-b .theme-opt{flex:1;display:flex;align-items:center;gap:9px;margin:0;padding:9px 11px;
+  border:1px solid var(--border);border-radius:10px;cursor:pointer;background:var(--bg3);font-size:12.5px;color:var(--text2)}
+.dlg-b .theme-opt:has(input:checked){border-color:var(--accent);color:var(--text)}
+.theme-opt input{width:auto;margin:0}
+.sw{width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.sw.dark{background:#0a0b0f;color:#e8eaf6}
+.sw.light{background:#f4eee3;color:#1f2230}
+.sw svg{width:18px;height:18px}
+.sw svg{width:18px;height:18px;overflow:visible}
+.warnbox{
+  background:rgba(224,92,122,.08);border:1px solid rgba(224,92,122,.35);
+  border-radius:9px;padding:10px 12px;color:var(--danger);font-size:12.5px;
+}
+.infobox{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:9px;padding:10px 12px;color:var(--text2);font-size:12.5px;line-height:1.7;
+}
+
+/* 추천 카드 / 방문 장면 */
+.card{
+  background:var(--bg3);border:1px solid var(--border);border-radius:11px;
+  padding:11px 13px;cursor:pointer;transition:border-color .15s,transform .12s;
+}
+.card:hover{border-color:var(--gold);transform:translateY(-1px)}
+.card .c-t{font-size:13.5px;font-weight:600;margin-bottom:4px;color:var(--gold2)}
+.card .c-d{font-size:12.5px;color:var(--text2);line-height:1.6}
+.center{display:flex;flex-direction:column;align-items:center;gap:12px;padding:18px 0;color:var(--text3);font-size:12.5px}
+#vScene p{margin-bottom:10px;color:var(--text2);line-height:1.8}
+#vScene p:last-child{margin-bottom:0}
+#vImgWrap img{width:100%;border-radius:11px;border:1px solid var(--border2)}
+
+/* ================= 토스트 ================= */
+#toasts{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:120;
+  display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;
+}
+.toast{
+  background:var(--glass);border:1px solid var(--border2);border-radius:22px;
+  padding:9px 18px;font-size:13px;color:var(--text);box-shadow:var(--shadow);
+  animation:toastIn .22s ease;white-space:nowrap;max-width:88vw;overflow:hidden;text-overflow:ellipsis;
+}
+.toast.err{border-color:var(--danger);color:var(--danger)}
+@keyframes toastIn{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+@media (max-width:760px){
+  :root{--rp-w:280px}
+  .tb{padding:6px 9px;font-size:12px}
+  .logo{font-size:15px}
+}
+</style>
+</head>
+<body>
+
+<div id="tabbar">
+  <div class="logo">WORLDMIND</div>
+  <div id="tabs"></div>
+  <button id="tabAdd" class="tabadd eo" title="세계관 추가">＋</button>
+</div>
+
+<div id="topbar">
+  <button class="tb eo" id="btnAddNode">＋ 노드</button>
+  <button class="tb eo gold" id="btnAiGen">✨ AI 노드</button>
+  <button class="tb eo" id="btnLayout">🔀 정렬</button>
+  <span id="syncChip"><i class="dot off" id="syncDot"></i><span id="syncTxt">오프라인</span></span>
+  <span class="sp"></span>
+  <button class="tb" id="btnLock">🔒 보기 전용</button>
+  <button class="tb" id="btnWorld">🌐 세계관</button>
+  <button class="tb" id="btnChat">💬 대화</button>
+  <button class="tb" id="btnEvents">📜 사건</button>
+  <button class="tb" id="btnSettings">⚙ 설정</button>
+  <button class="tb" id="btnExport">💾 저장</button>
+  <button class="tb" id="btnImport" title="편집 모드에서 사용 가능">📂 로드</button>
+  <input type="file" id="fileImport" accept=".json,application/json" hidden>
+</div>
+
+<div id="main">
+  <div id="cwrap">
+    <div id="world">
+      <svg id="edgeSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="nodes"></div>
+    </div>
+    <div id="linkBanner" hidden>🔗 관계를 연결할 대상 노드를 클릭하세요 <button id="linkCancel">ESC 취소</button></div>
+    <div id="genOverlay" hidden><div class="spin"></div><div>AI가 노드를 생성하는 중…</div></div>
+    <div id="aiPanel" hidden>
+      <div class="ai-h">✨ AI 생성 미리보기</div>
+      <div class="ai-info" id="aiPanelInfo"></div>
+      <div class="ai-btns">
+        <button class="tb gold" id="aiAccept">추가하기</button>
+        <button class="tb" id="aiRetry">↻ 다시 생성</button>
+        <button class="tb" id="aiClose">닫기</button>
+      </div>
+    </div>
+    <div id="zoomCtl">
+      <button id="zIn" title="확대">＋</button>
+      <button id="zOut" title="축소">−</button>
+      <button id="zFit" title="전체 맞춤">⤢</button>
+    </div>
+  </div>
+
+  <aside id="rp" hidden>
+    <div class="rp-h"><span id="rpTitle"></span><button id="rpClose" title="닫기">✕</button></div>
+    <div class="rp-b" id="rpWorld" hidden>
+      <div class="rp-sec">세계관 설정 (자유 서술)</div>
+      <textarea id="wpText" rows="12" placeholder="세계의 배경, 규칙, 분위기 등을 자유롭게 적어주세요. AI 기능의 기반 자료로 쓰입니다."></textarea>
+      <div class="btnrow"><button class="btn pri eo" id="wpSave">저장</button></div>
+      <div class="rp-sec">참고 그림체 이미지 (최대 3장 · 이 브라우저에만 저장)</div>
+      <div class="refgrid" id="refImgs"></div>
+      <input type="file" id="refFile" accept="image/*" hidden>
+    </div>
+    <div class="rp-b" id="rpChat" hidden>
+      <div id="chatLog"></div>
+      <div class="chat-in">
+        <textarea id="chatText" rows="2" placeholder="세계관에 대해 질문하기…"></textarea>
+        <button id="chatSend">전송</button>
+      </div>
+    </div>
+    <div class="rp-b" id="rpEvents" hidden>
+      <div class="btnrow">
+        <button class="tb eo" id="evAdd">＋ 사건 추가</button>
+        <button class="tb eo gold" id="evAi">✨ AI 사건 생성</button>
+      </div>
+      <div id="evList" style="display:flex;flex-direction:column;gap:9px"></div>
+    </div>
+  </aside>
+</div>
+
+<div id="ctxMenu" hidden></div>
+<div id="modals"></div>
+<div id="toasts"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+'use strict';
+/* ==================================================================
+ * §1 데이터 스키마 상수 — 변경 금지 (기존 DB 호환)
+ * ================================================================== */
+let idC = Date.now();
+const gid = () => 'i' + (idC++);
+
+const TL = {world:'세계', group:'집단', space:'공간', char:'인물', item:'사물', trait:'성격', custom:'기타'};
+const TI = {world:'🌍', group:'👥', space:'🗺', char:'👤', item:'⚔️', trait:'💎', custom:'📌'};
+const TC = {world:'#9b59d6', group:'#4a9edd', space:'#3ecfb8', char:'#6bbd4a', item:'#e8b84b', trait:'#d4914a', custom:'#5a6090'};
+const TYPES = ['world','group','space','char','item','trait','custom'];
+
+function sanitizeTab(t){
+  if(!t.nodes) t.nodes = [];
+  if(!t.edges) t.edges = [];
+  if(!t.events) t.events = [];
+  if(!t.refImages) t.refImages = [];
+  if(t.worldPrompt == null) t.worldPrompt = '';
+  if(!t.title) t.title = '무제';
+  return t;
+}
+
+/* §6-1 AI 모델 — 한 곳에서 관리 */
+const AI_MODEL  = 'claude-opus-4-6';
+const IMG_MODEL = 'gemini-3.1-flash-image-preview';
+
+/* ==================================================================
+ * ★ 배포 설정 — 관리자가 이 두 값만 채웁니다 (README.md 참고)
+ *   API_BASE        : Cloudflare Worker 주소. 끝에 슬래시 없이.
+ *                     예) 'https://worldmind-api.myname.workers.dev'
+ *   FIREBASE_CONFIG : Firebase 콘솔의 웹 앱 설정 객체 (비밀 아님, 내장 OK)
+ *                     예) { apiKey:'…', authDomain:'…', databaseURL:'https://….firebasedatabase.app', projectId:'…' }
+ *   API 키와 마스터 코드는 Worker의 비밀 변수에만 존재합니다. 이 파일에는 넣지 마세요.
+ * ================================================================== */
+const API_BASE = '';
+const FIREBASE_CONFIG = null;
+
+/* §2-2 세션 ID (자기 쓰기 에코 무시용) */
+const FB_SID = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+
+/* ==================================================================
+ * 전역 상태
+ * ================================================================== */
+let tabs = [];
+let activeTabId = null;
+let editMode = false;
+let dirtyLocal = false;
+let lsLoadFailed = false;          // 로컬 데이터 파싱 실패 시 덮어쓰기 방지
+let sel = {nodeId:null, edgeId:null};
+let view = {z:0.8, px:0, py:0};
+let linkMode = {active:false, from:null};
+let _justDragged = false;          // §5-2 드래그/롱프레스 직후 클릭 억제
+let cleanupFns = [];               // §8-1 document/window 리스너 누수 방지
+let nodeSizes = {};                // 렌더 후 측정된 노드 크기
+let edgeEls = {};                  // 엣지 SVG 요소 참조 (드래그 중 지오메트리 갱신)
+let rpCur = null;                  // 열린 우측 패널
+let edgeColorMode = 'clean';       // 연결선 색: 'clean' | 'parent' (wm_edgecolor)
+let edgeShape = 'curve';           // 연결선 모양: 'curve' | 'line' (wm_edgeshape)
+let lastGenPrompt = '';
+let lastVisit = null;
+
+const curTab = () => tabs.find(t => t.id === activeTabId);
+const nodeById = (tab,id) => tab.nodes.find(n => n.id === id);
+
+/* 엘리먼트 참조 (bindStaticUI에서 할당) */
+let wrapEl, worldEl, edgeSvg, nodesEl, tabsEl, modalsEl, toastsEl, ctxEl,
+    rpEl, rpTitleEl, bannerEl, genOverlayEl, aiPanelEl, aiPanelInfoEl,
+    syncDotEl, syncTxtEl, chatLogEl, evListEl;
+
+/* ==================================================================
+ * 범용 유틸
+ * ================================================================== */
+const $  = q => document.querySelector(q);
+const NS = 'http://www.w3.org/2000/svg';
+
+function escHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function deepCopy(o){ return JSON.parse(JSON.stringify(o)); }
+
+async function sha256(text){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+/* CJK 줄바꿈 (공백 없는 한글/한자 라벨용) */
+function wrapCJK(str, maxChars){
+  const chars = [...String(str ?? '')];
+  const out = []; let cur = '';
+  for(const ch of chars){
+    cur += ch;
+    if(cur.length >= maxChars){ out.push(cur); cur = ''; }
+  }
+  if(cur) out.push(cur);
+  if(out.length > 3){ out.length = 3; out[2] = out[2].slice(0,-1) + '…'; }
+  return out;
+}
+
+function runCleanup(){
+  cleanupFns.forEach(f => { try{ f(); }catch(_){} });
+  cleanupFns = [];
+}
+
+/* 기존 데이터의 id 최대값보다 카운터를 앞세워 충돌 방지 */
+function ensureIdCounter(){
+  let max = 0;
+  const scan = id => { const m = /^i(\d+)$/.exec(id||''); if(m) max = Math.max(max, +m[1]); };
+  tabs.forEach(t => { scan(t.id); t.nodes.forEach(n=>scan(n.id)); t.edges.forEach(e=>scan(e.id)); t.events.forEach(e=>scan(e.id)); });
+  idC = Math.max(idC, max + 1);
+}
+
+/* ==================================================================
+ * 프록시 인증 — 마스터 코드는 Worker가 검증하고 서명 토큰(12h)을 내려준다.
+ * 토큰은 sessionStorage(wm_tok)에만 보관 → 탭을 닫으면 사라짐.
+ * ================================================================== */
+function getToken(){
+  try{
+    const t = sessionStorage.getItem('wm_tok');
+    const exp = +sessionStorage.getItem('wm_tok_exp') || 0;
+    if(t && exp > Date.now()) return t;
+  }catch(_){}
+  return null;
+}
+function setToken(t, exp){
+  try{ sessionStorage.setItem('wm_tok', t); sessionStorage.setItem('wm_tok_exp', String(exp)); }catch(_){}
+}
+function clearToken(){
+  try{ sessionStorage.removeItem('wm_tok'); sessionStorage.removeItem('wm_tok_exp'); }catch(_){}
+}
+
+/* 마스터 코드 → 토큰 */
+async function apiAuth(code){
+  if(!API_BASE) throw new Error('이 파일의 API_BASE(서버 주소)가 설정되지 않았습니다 — 관리자에게 문의');
+  const r = await fetch(API_BASE + '/api/auth', {
+    method:'POST', headers:{'content-type':'application/json'},
+    body: JSON.stringify({code})
+  });
+  const d = await r.json().catch(() => null);
+  if(r.status === 401) return null;                 // 코드 불일치
+  if(!r.ok || !d?.token) throw new Error(d?.error?.message || ('서버 오류 ' + r.status));
+  setToken(d.token, d.exp);
+  return d.token;
+}
+
+/* 토큰이 필요한 프록시 호출 (AI 기능 전용) */
+async function apiPost(path, body){
+  if(!API_BASE) throw new Error('이 파일의 API_BASE(서버 주소)가 설정되지 않았습니다 — 관리자에게 문의');
+  const tok = getToken();
+  if(!tok) throw new Error('🔒 버튼에서 마스터 코드로 잠금 해제한 뒤 AI 기능을 사용할 수 있습니다');
+  const r = await fetch(API_BASE + path, {
+    method:'POST',
+    headers:{'content-type':'application/json', 'authorization':'Bearer ' + tok},
+    body: JSON.stringify(body)
+  });
+  const d = await r.json().catch(() => null);
+  if(r.status === 401){
+    clearToken();
+    if(editMode) setEditMode(false);
+    throw new Error('세션이 만료되었습니다. 🔒 버튼으로 다시 잠금 해제해주세요');
+  }
+  if(!r.ok) throw new Error(d?.error?.message || ('서버 오류 ' + r.status));
+  return d;
+}
+
+/* ==================================================================
+ * 토스트 / 모달
+ * ================================================================== */
+function toast(msg, isErr){
+  const el = document.createElement('div');
+  el.className = 'toast' + (isErr ? ' err' : '');
+  el.textContent = msg;
+  toastsEl.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function openModal({title, body='', footer='', wide=false, onClose=null}){
+  const ov = document.createElement('div');
+  ov.className = 'ov';
+  ov.innerHTML =
+    `<div class="dlg${wide?' wide':''}">
+       <div class="dlg-h"><span>${title}</span><button class="x" title="닫기">✕</button></div>
+       <div class="dlg-b">${body}</div>
+       ${footer ? `<div class="dlg-f">${footer}</div>` : ''}
+     </div>`;
+  ov._onClose = onClose;
+  modalsEl.appendChild(ov);
+  ov.querySelector('.x').onclick = () => closeModal(ov);
+  ov.addEventListener('pointerdown', e => { if(e.target === ov) closeModal(ov); });
+  const fi = ov.querySelector('input,textarea,select');
+  if(fi) setTimeout(()=>fi.focus(), 40);
+  return ov;
+}
+function closeModal(ov){
+  if(!ov) return;
+  const f = ov._onClose; ov._onClose = null;
+  ov.remove();
+  if(f){ try{ f(); }catch(_){} }
+}
+function topModal(){ return modalsEl.lastElementChild; }
+
+function confirmModal({title, html, ok='확인', danger=false, onOk}){
+  const ov = openModal({
+    title, body: html,
+    footer: `<button class="btn" data-a="c">취소</button><button class="btn ${danger?'dngr':'pri'}" data-a="k">${ok}</button>`
+  });
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  ov.querySelector('[data-a=k]').onclick = () => { closeModal(ov); onOk && onOk(); };
+  return ov;
+}
+
+function reqEdit(){
+  if(!editMode){ toast('편집 모드에서만 가능합니다 (🔒 버튼)', true); return false; }
+  return true;
+}
+
+/* ==================================================================
+ * §6-3 AI JSON 파싱 — 3단 방어
+ * ================================================================== */
+
+/* 1단: 브래킷 카운팅 추출 — 문자열/이스케이프 인식, 첫 완전한 블록만 */
+function extractBlock(src, open, close){
+  const s = String(src ?? '');
+  const start = s.indexOf(open);
+  if(start < 0) return null;
+  let depth = 0, inStr = false, esc = false;
+  for(let i = start; i < s.length; i++){
+    const c = s[i];
+    if(inStr){
+      if(esc) esc = false;
+      else if(c === '\\') esc = true;
+      else if(c === '"') inStr = false;
+      continue;
+    }
+    if(c === '"'){ inStr = true; continue; }
+    if(c === open) depth++;
+    else if(c === close){
+      depth--;
+      if(depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null; // 미완성(잘린) 블록
+}
+
+/* 열린 괄호 스택/문자열 상태 계산 */
+function scanState(s){
+  const stack = []; let inStr = false, esc = false;
+  for(const c of s){
+    if(inStr){
+      if(esc) esc = false;
+      else if(c === '\\') esc = true;
+      else if(c === '"') inStr = false;
+    } else {
+      if(c === '"') inStr = true;
+      else if(c === '{') stack.push('}');
+      else if(c === '[') stack.push(']');
+      else if(c === '}' || c === ']') stack.pop();
+    }
+  }
+  return {stack, inStr};
+}
+
+/* 복구: ①미닫힌 문자열을 닫고 괄호 스택을 그대로 닫아보기(잘린 값 보존)
+ *       ②실패 시 끝에 매달린 "값 없는 키"만 제거 후 재시도
+ *       ③그래도 실패하면 마지막 구분 지점까지 잘라가며 반복 */
+function repairJson(src){
+  let s = String(src ?? '').trim();
+  if(!s) return null;
+  for(let attempt = 0; attempt < 60; attempt++){
+    let t = s.replace(/[,\s]+$/, '');
+    if(!t) return null;
+    const st = scanState(t);
+    if(st.inStr) t += '"';
+    let closed = t + st.stack.slice().reverse().join('');
+    try{ return JSON.parse(closed); }catch(_){}
+
+    let t2 = t.replace(/,?\s*"(?:[^"\\]|\\.)*"\s*:\s*$/, '').replace(/[,\s]+$/, '');
+    if(t2 && t2 !== t){
+      const st2 = scanState(t2);
+      let closed2 = t2 + (st2.inStr ? '"' : '') + st2.stack.slice().reverse().join('');
+      try{ return JSON.parse(closed2); }catch(_){}
+    }
+    const base = (t2 && t2 !== t) ? t2 : t;
+    const cut = Math.max(base.lastIndexOf(','), base.lastIndexOf('{'), base.lastIndexOf('['));
+    if(cut <= 0) return null;
+    s = base.slice(0, cut);
+  }
+  return null;
+}
+
+/* 3단: 배열 내부의 개별 객체를 하나씩 추출해 정상인 것만 수집
+ *      — 깨진 토큰은 건너뛰고, 말미의 잘린 객체는 복구해서 회수 */
+function extractObjectsFromArray(src){
+  const s = String(src ?? '');
+  const out = [];
+  let i = Math.max(0, s.indexOf('['));
+  for(let guard = 0; guard < 500; guard++){
+    const j = s.indexOf('{', i);
+    if(j < 0) break;
+    const ob = extractBlock(s.slice(j), '{', '}');
+    if(ob){
+      let v = null;
+      try{ v = JSON.parse(ob); }catch(_){ v = repairJson(ob); }
+      if(v != null && typeof v === 'object'){ out.push(v); i = j + ob.length; continue; }
+      i = j + 1;
+    }else{
+      const r = repairJson(s.slice(j));      // 끝에서 잘린 객체 회수
+      if(r != null && typeof r === 'object' && !Array.isArray(r) && Object.keys(r).length){
+        out.push(r); break;
+      }
+      i = j + 1;                             // 짝 없는 여는 괄호·빈 복구는 건너뜀
+    }
+  }
+  return out;
+}
+
+/* 통합 진입점 — 직접 파싱 우선(§6-3-2), 실패 시에만 복구 경로.
+ * 복구 순서: 요청 종류의 완전 블록 → 요청 종류 시작점부터 전체 복구
+ *           → 개별 객체 부분 수집 → 반대 종류 블록 → 전체 복구 */
+function parseAIJson(text, kind = 'object'){
+  if(text == null) return null;
+  const raw = String(text).trim();
+  try{ return JSON.parse(raw); }catch(_){}
+  const t = raw.replace(/```(?:json)?/gi, '\n'); // 코드펜스는 노이즈로만 취급
+  const [po, pc] = kind === 'array' ? ['[',']'] : ['{','}'];
+  const [so, sc] = kind === 'array' ? ['{','}'] : ['[',']'];
+
+  const block = extractBlock(t, po, pc);
+  if(block){
+    try{ return JSON.parse(block); }catch(_){}
+    const r = repairJson(block);
+    if(r != null) return r;
+  }
+  const si = t.indexOf(po);
+  if(si >= 0){
+    const r = repairJson(t.slice(si));       // 잘린 최상위 구조 복구 (내부 배열/객체 유지)
+    if(r != null){
+      if(kind !== 'array') return r;
+      const objs = extractObjectsFromArray(t);
+      if(Array.isArray(r) && r.length >= objs.length) return r;
+      if(objs.length) return objs;
+      return r;
+    }
+  }
+  const objs = extractObjectsFromArray(t);
+  if(objs.length) return kind === 'array' ? objs : objs[0];
+  const alt = extractBlock(t, so, sc);
+  if(alt){
+    try{ return JSON.parse(alt); }catch(_){}
+    const r = repairJson(alt);
+    if(r != null) return r;
+  }
+  return repairJson(t);
+}
+
+/* ==================================================================
+ * §3 Firebase 설정 파서 — 순수 JSON / JS 객체 리터럴 / const 선언문
+ * ================================================================== */
+function parseFbConfig(txt){
+  if(!txt) return null;
+  const raw = String(txt).trim();
+  if(!raw) return null;
+  try{ const v = JSON.parse(raw); return (v && typeof v === 'object') ? v : null; }catch(_){}
+  const obj = extractBlock(raw, '{', '}');
+  if(!obj) return null;
+  try{ const v = JSON.parse(obj); return (v && typeof v === 'object') ? v : null; }catch(_){}
+  let s = obj
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1')   // "https://…" 보호: ':' 뒤의 //는 유지
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, (m,p) => '"' + p.replace(/\\'/g,"'").replace(/"/g,'\\"') + '"')
+    .replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":')
+    .replace(/,\s*([}\]])/g, '$1');
+  try{ const v = JSON.parse(s); return (v && typeof v === 'object') ? v : null; }catch(_){ return null; }
+}
+/* ==================================================================
+ * §2-1 localStorage — 키 변경 금지: wm_tabs / wm_fbcfg (wm_k·wm_gk·wm_mh는 프록시 전환으로 더 이상 사용하지 않으나 기존 값은 건드리지 않음)
+ * ================================================================== */
+
+/* 저장용 클린 사본 — _exp/_aiPreview/_w/_chat 등 런타임 필드 제외 (화이트리스트) */
+function cleanNodeLS(n){
+  return {id:n.id, type:n.type, name:n.name ?? '', desc:n.desc ?? '',
+          x:Math.round(n.x ?? 0), y:Math.round(n.y ?? 0)};
+}
+function cleanEdgeLS(e){
+  return {id:e.id, from:e.from, to:e.to, label:e.label ?? '', desc:e.desc ?? '',
+          isParent:!!e.isParent};
+}
+function cleanEventLS(v){
+  return {id:v.id, time:v.time ?? '', body:v.body ?? '', order:v.order ?? 0};
+}
+function cleanTab(t){
+  return {
+    id: t.id,
+    title: t.title ?? '무제',
+    nodes: (t.nodes||[]).filter(n => !n._aiPreview).map(cleanNodeLS),
+    edges: (t.edges||[]).filter(e => !e._aiPreview).map(cleanEdgeLS),
+    events: (t.events||[]).map(cleanEventLS),
+    worldPrompt: t.worldPrompt ?? '',
+    refImages: (t.refImages||[]).slice(0,3)
+  };
+}
+
+function loadLocal(){
+  let raw = null;
+  try{ raw = localStorage.getItem('wm_tabs'); }catch(_){}
+  if(!raw) return;
+  try{
+    const d = JSON.parse(raw);
+    const arr = Array.isArray(d) ? d : (d && Array.isArray(d.tabs) ? d.tabs : null);
+    if(!arr) throw new Error('bad shape');
+    tabs = arr.filter(Boolean).map(t => sanitizeTab(deepCopy(t)));
+    tabs.forEach(t => t.nodes.forEach(n => { n._exp = false; delete n._aiPreview; }));
+    activeTabId = tabs[0]?.id ?? null;
+  }catch(err){
+    console.error('wm_tabs 파싱 실패', err);
+    lsLoadFailed = true;   // 손상 데이터 보호: 자동 저장으로 덮어쓰지 않음
+    toast('로컬 데이터를 읽지 못했습니다 — 자동 저장을 일시 중지합니다', true);
+  }
+}
+
+function markDirty(){ dirtyLocal = true; }
+
+function saveLocal(){
+  if(lsLoadFailed) return;  // 원본 보호
+  try{
+    localStorage.setItem('wm_tabs', JSON.stringify({tabs: tabs.map(cleanTab)}));
+  }catch(err){
+    console.error('localStorage 저장 실패', err);
+    toast('로컬 저장 실패 — 저장 공간을 확인해주세요 (참고 이미지 용량 등)', true);
+  }
+}
+
+/* 변경 커밋: 로컬은 주기 저장(§8-4), Firebase는 즉시 diff 전송 */
+function commit(){
+  markDirty();
+  fbSyncActive();
+}
+
+/* ==================================================================
+ * §5-12 내보내기 / 가져오기 (데이터 계층)
+ * ================================================================== */
+function downloadText(name, text, type = 'application/json'){
+  const blob = new Blob([text], {type});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function exportJson(){
+  downloadText('worldmind-export.json', JSON.stringify({tabs: tabs.map(cleanTab)}, null, 2));
+  toast('worldmind-export.json 파일로 저장했습니다');
+}
+
+async function applyImport(parsed){
+  tabs = parsed.tabs.filter(Boolean).map(t => sanitizeTab(deepCopy(t)));
+  tabs.forEach(t => {
+    t.nodes = t.nodes.filter(n => !n._aiPreview);
+    t.edges = t.edges.filter(e => !e._aiPreview);
+    t.nodes.forEach(n => { n._exp = false; });
+  });
+  if(!tabs.length) tabs = [makeDefaultTab()];
+  activeTabId = tabs[0].id;
+  ensureIdCounter();
+  sel = {nodeId:null, edgeId:null};
+  lsLoadFailed = false;
+  markDirty(); saveLocal();
+  renderTabs(); renderAll(); zoomFit(); refreshOpenPanels();
+  if(fbReady){
+    await pushAllToFB();
+    attachTab(activeTabId);
+  }
+  toast('데이터를 불러왔습니다');
+}
+
+function makeDefaultTab(){
+  const t = sanitizeTab({id:gid(), title:'새 세계관', nodes:[], edges:[], events:[], worldPrompt:'', refImages:[]});
+  t.nodes.push({id:gid(), type:'world', name:'새 세계', desc:'이 세계의 중심 개념을 적어보세요.', x:1900, y:1950, _exp:false});
+  return t;
+}
+/* ==================================================================
+ * §2-2 / §2-3 / §3 Firebase Realtime Database
+ *  - 루트: worldmind / tabList + tabs/{tabId}/{meta,nodes,edges,events}
+ *  - 개별 항목 diff 전송(set), child_* 리스너 수신, _w 에코 무시
+ * ================================================================== */
+let fbApp = null, fbDb = null, fbRoot = null, fbReady = false, fbAppSeq = 0;
+let fbUnsubs = [];        // 활성 탭 리스너 [ref, event, cb]
+let fbGlobalUnsubs = [];  // tabList / .info 리스너
+let fbSnap = {meta:null, nodes:{}, edges:{}, events:{}}; // 서버에 반영된 상태 스냅샷(활성 탭)
+let lastTabListJson = '';
+let curAttachId = null;
+let remoteTimer = null;
+
+function setStatus(cls, txt){
+  if(!syncDotEl) return;
+  syncDotEl.className = 'dot ' + cls;
+  syncTxtEl.textContent = txt;
+}
+
+/* 필드 순서를 고정한 정규화 — 스냅샷 비교의 기준 */
+function normFB(kind, d){
+  d = d || {};
+  if(kind === 'nodes')  return {type:d.type||'custom', name:d.name??'', desc:d.desc??'', x:Math.round(d.x||0), y:Math.round(d.y||0)};
+  if(kind === 'edges')  return {from:d.from||'', to:d.to||'', label:d.label??'', desc:d.desc??'', isParent:!!d.isParent};
+  return {time:d.time??'', body:d.body??'', order:d.order??0};
+}
+function metaFB(t){ return {title:t.title??'무제', worldPrompt:t.worldPrompt??''}; }
+function objToArr(o){
+  return Object.entries(o||{}).map(([id,v]) => { const {_w, ...d} = (v||{}); return {id, ...d}; });
+}
+function emptySnap(){ return {meta:null, nodes:{}, edges:{}, events:{}}; }
+
+/* ---------------- 초기화 ---------------- */
+async function initFB(cfg, hadLocal){
+  teardownFB();
+  if(!cfg){ setStatus('off','오프라인'); return; }
+  setStatus('warn','연결 중…');
+  try{
+    fbApp = firebase.initializeApp(cfg, 'wm' + (fbAppSeq++));
+    fbDb = fbApp.database();
+    fbRoot = fbDb.ref('worldmind');
+
+    const rootSnap = await fbRoot.once('value');
+    let v = rootSnap.val();
+    v = await migrateIfOld(v);           // §2-3 구 포맷 자동 마이그레이션
+
+    if(v && v.tabList){
+      const list = normTabList(v.tabList);
+      if(!hadLocal && list.length){
+        adoptAll(list, v);               // 새 브라우저: 서버 데이터 전면 채택
+      }else if(list.length){
+        initReconcile(list, v);          // 초기 병합: 서버+로컬 합집합(오프라인 생성분 보존)
+      }
+      lastTabListJson = JSON.stringify(list);
+    }
+
+    fbReady = true;
+
+    /* 연결 상태 */
+    const cref = fbDb.ref('.info/connected');
+    const ccb = cref.on('value', s => {
+      setStatus(s.val() ? 'ok' : 'warn', s.val() ? '실시간 동기화' : '연결 중…');
+    });
+    fbGlobalUnsubs.push([cref,'value',ccb]);
+
+    /* 탭 목록 감시 (다른 사용자의 탭 추가/삭제) */
+    const tlref = fbRoot.child('tabList');
+    const tlcb = tlref.on('value', s => {
+      const list = normTabList(s.val());
+      const j = JSON.stringify(list);
+      if(j === lastTabListJson) return;  // 자기 쓰기 에코
+      lastTabListJson = j;
+      applyRemoteTabList(list);
+    });
+    fbGlobalUnsubs.push([tlref,'value',tlcb]);
+  }catch(err){
+    console.error('Firebase 초기화 실패', err);
+    setStatus('err','연결 오류');
+    fbReady = false;
+  }
+}
+
+function teardownFB(){
+  detachTab();
+  fbGlobalUnsubs.forEach(([r,e,c]) => { try{ r.off(e,c); }catch(_){} });
+  fbGlobalUnsubs = [];
+  try{ if(fbApp) fbApp.delete(); }catch(_){}
+  fbApp = fbDb = fbRoot = null;
+  fbReady = false;
+  lastTabListJson = '';
+  fbSnap = emptySnap();
+  setStatus('off','오프라인');
+}
+
+function normTabList(v){
+  let arr = v;
+  if(!arr) return [];
+  if(!Array.isArray(arr)){
+    arr = Object.keys(arr).sort((a,b)=>(+a)-(+b)).map(k => arr[k]);
+  }
+  return arr.filter(x => x && x.id).map(x => ({id:x.id, title:x.title ?? '무제'}));
+}
+
+/* §2-3: worldmind/{tabs:[...]} 배열 통짜 포맷 → 항목별 경로 구조로 손실 없이 변환 */
+async function migrateIfOld(v){
+  if(!v) return v;
+  let oldTabs = null;
+  if(Array.isArray(v.tabs)) oldTabs = v.tabs;
+  else if(v.tabs && !v.tabList && typeof v.tabs === 'object'){
+    const keys = Object.keys(v.tabs);
+    if(keys.length && keys.every(k => /^\d+$/.test(k)))
+      oldTabs = keys.sort((a,b)=>(+a)-(+b)).map(k => v.tabs[k]);
+  }
+  if(!oldTabs) return v;
+
+  const tabList = [], tabsObj = {};
+  oldTabs.filter(Boolean).map(t => sanitizeTab(deepCopy(t))).forEach(t => {
+    tabList.push({id:t.id, title:t.title});
+    const nodes = {}, edges = {}, events = {};
+    t.nodes.forEach(n => { nodes[n.id] = {...normFB('nodes',n), _w:FB_SID}; });
+    t.edges.forEach(e => { edges[e.id] = {...normFB('edges',e), _w:FB_SID}; });
+    t.events.forEach(ev => { events[ev.id] = {...normFB('events',ev), _w:FB_SID}; });
+    tabsObj[t.id] = {meta:{...metaFB(t), _w:FB_SID}, nodes, edges, events};
+  });
+  const nv = {tabList, tabs:tabsObj};
+  await fbRoot.set(nv);
+  console.info('Firebase 구 포맷 → 신규 구조 마이그레이션 완료 (' + tabList.length + '탭)');
+  return nv;
+}
+
+function buildTabFromServer(id, title, v){
+  const tv = (v && v.tabs && v.tabs[id]) || {};
+  return sanitizeTab({
+    id,
+    title: tv.meta?.title ?? title,
+    worldPrompt: tv.meta?.worldPrompt ?? '',
+    nodes: objToArr(tv.nodes).map(n => ({_exp:false, ...n})),
+    edges: objToArr(tv.edges),
+    events: objToArr(tv.events),
+    refImages: []
+  });
+}
+
+function adoptAll(list, v){
+  tabs = list.map(({id,title}) => buildTabFromServer(id, title, v));
+  activeTabId = tabs[0]?.id ?? null;
+  markDirty();
+}
+
+/* 초기 1회 병합: 서버 목록 우선 순서, 로컬 전용 탭은 뒤에 보존 → 이후 fbSync가 push */
+function initReconcile(list, v){
+  const local = {}; tabs.forEach(t => local[t.id] = t);
+  const next = [];
+  list.forEach(({id,title}) => {
+    if(local[id]){ next.push(local[id]); delete local[id]; }
+    else next.push(buildTabFromServer(id, title, v));
+  });
+  Object.values(local).forEach(t => next.push(t));
+  tabs = next;
+  if(!tabs.find(t => t.id === activeTabId)) activeTabId = tabs[0]?.id ?? null;
+  markDirty();
+}
+
+/* 정상 운영 중 원격 tabList 반영 — 서버 목록이 권위 */
+function applyRemoteTabList(list){
+  if(!list.length) return; // 빈 목록 수신은 무시(방어)
+  const local = {}; tabs.forEach(t => local[t.id] = t);
+  const next = [], fetches = [];
+  list.forEach(({id,title}) => {
+    if(local[id]){ local[id].title = title; next.push(local[id]); delete local[id]; }
+    else{
+      const stub = sanitizeTab({id, title, nodes:[], edges:[], events:[], worldPrompt:'', refImages:[]});
+      next.push(stub); fetches.push(stub);
+    }
+  });
+  tabs = next;
+  if(!tabs.find(t => t.id === activeTabId)){
+    activeTabId = tabs[0]?.id ?? null;
+    sel = {nodeId:null, edgeId:null};
+    if(activeTabId && fbReady) attachTab(activeTabId);
+    zoomFitSoon();
+  }
+  fetches.forEach(stub => {
+    fbRoot.child('tabs/' + stub.id).once('value').then(s => {
+      const tv = s.val(); if(!tv) return;
+      stub.title = tv.meta?.title ?? stub.title;
+      stub.worldPrompt = tv.meta?.worldPrompt ?? '';
+      stub.nodes = objToArr(tv.nodes).map(n => ({_exp:false, ...n}));
+      stub.edges = objToArr(tv.edges);
+      stub.events = objToArr(tv.events);
+      markDirty(); queueRemoteRender();
+    }).catch(()=>{});
+  });
+  markDirty(); queueRemoteRender();
+}
+
+/* ---------------- 활성 탭 리스너 ---------------- */
+function detachTab(){
+  fbUnsubs.forEach(([r,e,c]) => { try{ r.off(e,c); }catch(_){} });
+  fbUnsubs = [];
+  curAttachId = null;
+}
+
+async function attachTab(tabId){
+  if(!fbReady || !fbRoot) return;
+  detachTab();
+  const tab = tabs.find(t => t.id === tabId);
+  if(!tab) return;
+  curAttachId = tabId;
+  /* ⚠ §5-1: 스냅샷은 항상 '서버 인지 상태'에서 출발.
+     복제 직후처럼 서버가 비어 있으면 스냅샷도 비어 → 전체가 diff로 기록됨 */
+  fbSnap = emptySnap();
+  const tref = fbRoot.child('tabs/' + tabId);
+  try{
+    const s = await tref.once('value');
+    if(curAttachId !== tabId) return;
+    const v = s.val();
+    if(v) adoptServerTab(tab, v);
+  }catch(err){ console.warn('탭 데이터 읽기 실패', err); }
+  if(curAttachId !== tabId) return;
+
+  const mref = tref.child('meta');
+  const mcb = mref.on('value', s => {
+    const val = s.val(); if(!val) return;
+    const {_w, ...m} = val;
+    const j = JSON.stringify({title:m.title??'무제', worldPrompt:m.worldPrompt??''});
+    if(fbSnap.meta === j) return;
+    fbSnap.meta = j;
+    if(_w === FB_SID) return;
+    const t = tabs.find(x => x.id === tabId); if(!t) return;
+    t.title = m.title ?? t.title;
+    t.worldPrompt = m.worldPrompt ?? '';
+    queueRemoteRender();
+  });
+  fbUnsubs.push([mref,'value',mcb]);
+
+  ['nodes','edges','events'].forEach(kind => {
+    const kref = tref.child(kind);
+    [['child_added','up'],['child_changed','up'],['child_removed','rm']].forEach(([evt,mode]) => {
+      const cb = kref.on(evt, s => handleRemoteItem(tabId, kind, mode, s.key, s.val()));
+      fbUnsubs.push([kref, evt, cb]);
+    });
+  });
+
+  fbSyncActive();       // 서버에 없는 로컬 항목 push (복제 탭 → 전량 기록)
+  queueRemoteRender();
+}
+
+function adoptServerTab(tab, v){
+  if(v.meta){
+    const {_w, ...m} = v.meta;
+    tab.title = m.title ?? tab.title;
+    tab.worldPrompt = m.worldPrompt ?? tab.worldPrompt ?? '';
+    fbSnap.meta = JSON.stringify({title:tab.title??'무제', worldPrompt:tab.worldPrompt??''});
+  }
+  ['nodes','edges','events'].forEach(kind => {
+    const src = v[kind] || {};
+    Object.entries(src).forEach(([id, val]) => {
+      const {_w, ...data} = (val||{});
+      const norm = normFB(kind, data);
+      fbSnap[kind][id] = JSON.stringify(norm);
+      const arr = tab[kind];
+      const ex = arr.find(x => x.id === id);
+      if(ex) Object.assign(ex, norm);
+      else arr.push(kind === 'nodes' ? {id, _exp:false, ...norm} : {id, ...norm});
+    });
+  });
+  markDirty();
+}
+
+function handleRemoteItem(tabId, kind, mode, id, val){
+  if(curAttachId !== tabId) return;
+  const tab = tabs.find(t => t.id === tabId); if(!tab) return;
+  const arr = tab[kind];
+  if(mode === 'rm'){
+    const hadSnap = (id in fbSnap[kind]);
+    const idx = arr.findIndex(x => x.id === id);
+    if(!hadSnap && idx < 0) return;
+    delete fbSnap[kind][id];
+    if(idx >= 0) arr.splice(idx, 1);
+    if(kind === 'nodes'){
+      tab.edges = tab.edges.filter(e => {
+        const gone = e.from === id || e.to === id;
+        if(gone) delete fbSnap.edges[e.id];
+        return !gone;
+      });
+      if(sel.nodeId === id) sel.nodeId = null;
+    }
+    if(kind === 'edges' && sel.edgeId === id) sel.edgeId = null;
+    markDirty(); queueRemoteRender();
+    return;
+  }
+  const {_w, ...data} = (val||{});
+  const norm = normFB(kind, data);
+  const j = JSON.stringify(norm);
+  if(fbSnap[kind][id] === j) return;   // 이미 반영된 내용
+  fbSnap[kind][id] = j;
+  if(_w === FB_SID) return;            // 자기 쓰기 에코
+  const ex = arr.find(x => x.id === id);
+  if(ex) Object.assign(ex, norm);
+  else arr.push(kind === 'nodes' ? {id, _exp:false, ...norm} : {id, ...norm});
+  markDirty(); queueRemoteRender();
+}
+
+/* ---------------- 쓰기: 변경 항목만 diff 전송 (§3) ---------------- */
+function fbSyncActive(){
+  if(!fbReady || !fbRoot) return;
+  const tab = curTab(); if(!tab) return;
+
+  /* 탭 목록 */
+  const tl = tabs.map(t => ({id:t.id, title:t.title ?? '무제'}));
+  const tj = JSON.stringify(tl);
+  if(tj !== lastTabListJson){
+    lastTabListJson = tj;
+    fbRoot.child('tabList').set(tl).catch(()=>{});
+  }
+
+  if(curAttachId !== tab.id) return;   // 활성 탭 리스너 준비 후에만 항목 diff
+  const tref = fbRoot.child('tabs/' + tab.id);
+
+  const mj = JSON.stringify(metaFB(tab));
+  if(fbSnap.meta !== mj){
+    fbSnap.meta = mj;
+    tref.child('meta').set({...metaFB(tab), _w:FB_SID}).catch(()=>{});
+  }
+
+  const kinds = [
+    ['nodes',  it => !it._aiPreview],
+    ['edges',  it => !it._aiPreview],
+    ['events', () => true]
+  ];
+  kinds.forEach(([kind, keep]) => {
+    const seen = {};
+    tab[kind].filter(keep).forEach(it => {
+      const j = JSON.stringify(normFB(kind, it));
+      seen[it.id] = 1;
+      if(fbSnap[kind][it.id] !== j){
+        fbSnap[kind][it.id] = j;
+        tref.child(kind + '/' + it.id).set({...normFB(kind,it), _w:FB_SID}).catch(()=>{});
+      }
+    });
+    Object.keys(fbSnap[kind]).forEach(id => {
+      if(!seen[id]){
+        delete fbSnap[kind][id];
+        tref.child(kind + '/' + id).remove().catch(()=>{});
+      }
+    });
+  });
+}
+
+/* 원격 수신 렌더 — 50ms 디바운스 (§3, §8-3) */
+function queueRemoteRender(){
+  if(remoteTimer) return;
+  remoteTimer = setTimeout(() => {
+    remoteTimer = null;
+    renderTabs();
+    scheduleRender();
+    refreshOpenPanels();
+  }, 50);
+}
+
+/* §5-12 로드 등 전면 교체 시: 서버 전체를 로컬 기준으로 재기록 */
+async function pushAllToFB(){
+  if(!fbReady || !fbRoot) return;
+  try{
+    const s = await fbRoot.child('tabList').once('value');
+    const oldList = normTabList(s.val());
+    const newIds = new Set(tabs.map(t => t.id));
+    for(const {id} of oldList){
+      if(!newIds.has(id)) await fbRoot.child('tabs/' + id).remove();
+    }
+    for(const t of tabs){
+      const nodes = {}, edges = {}, events = {};
+      t.nodes.filter(n=>!n._aiPreview).forEach(n => { nodes[n.id] = {...normFB('nodes',n), _w:FB_SID}; });
+      t.edges.filter(e=>!e._aiPreview).forEach(e => { edges[e.id] = {...normFB('edges',e), _w:FB_SID}; });
+      t.events.forEach(ev => { events[ev.id] = {...normFB('events',ev), _w:FB_SID}; });
+      await fbRoot.child('tabs/' + t.id).set({meta:{...metaFB(t), _w:FB_SID}, nodes, edges, events});
+    }
+    const tl = tabs.map(t => ({id:t.id, title:t.title ?? '무제'}));
+    lastTabListJson = JSON.stringify(tl);
+    await fbRoot.child('tabList').set(tl);
+    fbSnap = emptySnap();
+  }catch(err){
+    console.error('전체 동기화 실패', err);
+    toast('Firebase 동기화 중 오류가 발생했습니다', true);
+  }
+}
+/* ==================================================================
+ * 캔버스 뷰포트 — 4000×4000, translate+scale, 줌 0.15~3 (§4, §9)
+ * ================================================================== */
+function applyView(){
+  worldEl.style.transform = `translate(${view.px}px,${view.py}px) scale(${view.z})`;
+}
+function clampZ(z){ return Math.min(3, Math.max(0.15, z)); }
+
+function zoomAt(sx, sy, factor){
+  const nz = clampZ(view.z * factor);
+  const k = nz / view.z;
+  view.px = sx - (sx - view.px) * k;
+  view.py = sy - (sy - view.py) * k;
+  view.z = nz;
+  applyView();
+}
+function screenToWorld(sx, sy){
+  return {x:(sx - view.px) / view.z, y:(sy - view.py) / view.z};
+}
+function viewCenterWorld(){
+  const r = wrapEl.getBoundingClientRect();
+  return screenToWorld(r.width/2, r.height/2);
+}
+
+function zoomFit(){
+  const tab = curTab(); if(!tab || !wrapEl) return;
+  const r = wrapEl.getBoundingClientRect();
+  if(!tab.nodes.length){
+    view.z = 0.7;
+    view.px = r.width/2 - 2000*view.z;
+    view.py = r.height/2 - 2000*view.z;
+    applyView(); return;
+  }
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  tab.nodes.forEach(n => {
+    const s = nodeSizes[n.id] || {w:200, h:70};
+    minX = Math.min(minX, n.x);        minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + s.w);  maxY = Math.max(maxY, n.y + s.h);
+  });
+  const pad = 140;
+  minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+  const z = clampZ(Math.min(r.width/(maxX-minX), r.height/(maxY-minY), 1.4));
+  view.z = z;
+  view.px = (r.width  - (maxX-minX)*z)/2 - minX*z;
+  view.py = (r.height - (maxY-minY)*z)/2 - minY*z;
+  applyView();
+}
+function zoomFitSoon(){ requestAnimationFrame(() => { renderAll(); zoomFit(); }); }
+
+/* ==================================================================
+ * 렌더 파이프라인 — 한 사이클에 노드/엣지 각 1회 (§8-2)
+ * ================================================================== */
+let renderQueued = false;
+function scheduleRender(){
+  if(renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; renderAll(); });
+}
+function renderAll(){
+  renderNodes();
+  renderEdges();
+}
+
+/* ---------------- 노드 ---------------- */
+function renderNodes(){
+  runCleanup();                       // §8-1 이전 렌더의 window 리스너 정리
+  const tab = curTab();
+  nodesEl.innerHTML = '';
+  nodeSizes = {};
+  if(!tab) return;
+  tab.nodes.forEach(n => {
+    const type = TC[n.type] ? n.type : 'custom';
+    const el = document.createElement('div');
+    el.className = 'node t-' + type
+      + (n._exp ? ' exp' : '')
+      + (sel.nodeId === n.id ? ' sel' : '')
+      + (n._aiPreview ? ' preview' : '');
+    el.style.left = (n.x||0) + 'px';
+    el.style.top  = (n.y||0) + 'px';
+    el.dataset.id = n.id;
+    el.innerHTML =
+      `<div class="nh"><span class="ni">${TI[type]}</span><span class="nt">${TL[type]}</span></div>` +
+      `<div class="nn">${escHtml(n.name || '(이름 없음)')}</div>` +
+      `<div class="nd">${escHtml(n.desc || '설명이 없습니다.').replace(/\n/g,'<br>')}</div>`;
+    wireNode(el, n);
+    nodesEl.appendChild(el);
+    nodeSizes[n.id] = {w:el.offsetWidth, h:el.offsetHeight};
+  });
+}
+
+function centerOf(id){
+  const tab = curTab(); if(!tab) return null;
+  const n = nodeById(tab, id); if(!n) return null;
+  const s = nodeSizes[id] || {w:200, h:70};
+  return {x:(n.x||0) + s.w/2, y:(n.y||0) + s.h/2};
+}
+
+/* ---------------- 연결선 ---------------- */
+function renderEdges(){
+  const tab = curTab();
+  edgeSvg.innerHTML = '';
+  edgeEls = {};
+  if(!tab) return;
+  const labels = [];
+  const obs = buildObstacles();
+  tab.edges.forEach(ed => {
+    const A = centerOf(ed.from), B = centerOf(ed.to);
+    if(!A || !B) return;
+    const g = document.createElementNS(NS,'g');
+    if(ed._aiPreview) g.classList.add('preview');
+    if(sel.edgeId === ed.id) g.classList.add('esel');
+    /* 연결선 색 모드: 출발(상위) 노드의 타입 색을 --ec로 지정.
+       CSS는 var(--ec, 기본색) 폴백이라 선택 강조·AI 미리보기 규칙이 여전히 우선한다 */
+    let ec = null;
+    if(edgeColorMode === 'parent'){
+      const ft = nodeById(tab, ed.from)?.type;
+      ec = 'var(--c-' + (TC[ft] ? ft : 'custom') + ')';
+      g.style.setProperty('--ec', ec);
+    }
+
+    const line = document.createElementNS(NS,'path');
+    line.setAttribute('class','e-line ' + (ed.isParent ? 'parent' : 'normal'));
+    const hit = document.createElementNS(NS,'path');
+    hit.setAttribute('class','e-hit');
+    g.appendChild(line); g.appendChild(hit);
+
+    let lbl = null;
+    const isSel = sel.edgeId === ed.id;
+    const lines = isSel ? [] : wrapCJK(ed.label || '', 7);
+    if(lines.length){
+      lbl = document.createElementNS(NS,'g');
+      lbl.setAttribute('class','e-lbl');
+      const charW = 12, lineH = 15;
+      const w = Math.max(...lines.map(l => [...l].length)) * charW + 16;
+      const h = lines.length * lineH + 9;
+      const rect = document.createElementNS(NS,'rect');
+      rect.setAttribute('x', -w/2); rect.setAttribute('y', -h/2);
+      rect.setAttribute('width', w); rect.setAttribute('height', h);
+      rect.setAttribute('rx', 7);
+      lbl.appendChild(rect);
+      const text = document.createElementNS(NS,'text');
+      const startY = -((lines.length-1)/2) * lineH + 4;
+      lines.forEach((l,i) => {
+        const ts = document.createElementNS(NS,'tspan');
+        ts.setAttribute('x', 0);
+        ts.setAttribute('y', startY + i*lineH);
+        ts.textContent = l;
+        text.appendChild(ts);
+      });
+      lbl.appendChild(text);
+      const par = document.createElementNS(NS,'g');
+      if(ed._aiPreview) par.classList.add('preview');
+      if(sel.edgeId === ed.id) par.classList.add('esel');
+      if(ec) par.style.setProperty('--ec', ec);
+      par.appendChild(lbl);
+      labels.push(par);
+    }
+
+    let detail = null;
+    if(isSel){
+      detail = document.createElement('div');
+      detail.className = 'e-detail' + (ed._aiPreview ? ' preview' : '');
+      if(ec) detail.style.setProperty('--ec', ec);
+      const hasDesc = !!(ed.desc && ed.desc.trim());
+      detail.innerHTML =
+        `<div class="ed-t">${escHtml(ed.label || '관계')}` +
+        `<span class="ed-tag">${ed.isParent ? '부모 → 자식' : '일반 관계'}</span></div>` +
+        `<div class="ed-d${hasDesc ? '' : ' empty-d'}">${hasDesc ? escHtml(ed.desc) : (editMode ? '설명이 없습니다. 우클릭 → 관계 편집으로 추가할 수 있어요.' : '설명이 없습니다.')}</div>`;
+      if(ec && !ed._aiPreview) detail.style.borderColor = ec;
+      wireEdgeDetail(detail, ed);
+      nodesEl.appendChild(detail);
+    }
+
+    edgeEls[ed.id] = {line, hit, lbl, detail, ed, selWrap:g};
+    setEdgeGeom(edgeEls[ed.id], A, B, obs);
+    wireEdge(hit, ed);
+    if(lbl) wireEdge(lbl, ed);
+    edgeSvg.appendChild(g);
+  });
+  labels.forEach(l => edgeSvg.appendChild(l)); // 라벨을 선 위 레이어로
+}
+
+/* ---------------- 연결선 지오메트리: 곡선(노드 회피) / 직선 ---------------- */
+function buildObstacles(){
+  const tab = curTab(); if(!tab) return [];
+  return tab.nodes.map(n => {
+    const s = nodeSizes[n.id] || {w:200, h:70};
+    return {id:n.id, x:(n.x||0) + s.w/2, y:(n.y||0) + s.h/2, r:Math.max(s.w, s.h)/2};
+  });
+}
+
+/* 2차 베지어: 제어점 = 현 중점 + 법선×k. 곡선의 실제 최대 편차는 k/2 */
+function edgePath(A, B, k){
+  const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1;
+  const nx = -dy/L, ny = dx/L;
+  const mx = (A.x + B.x)/2, my = (A.y + B.y)/2;
+  if(!k) return {d:`M ${A.x} ${A.y} L ${B.x} ${B.y}`, mx, my};
+  const px = mx + nx*k, py = my + ny*k;
+  return {d:`M ${A.x} ${A.y} Q ${px} ${py} ${B.x} ${B.y}`, mx: mx + nx*k/2, my: my + ny*k/2};
+}
+
+/* 경로 근처 노드를 피하는 완만한 굴곡값(k) 선택
+   — 양쪽 방향 × 여러 굴곡 후보를 샘플링해 침범이 가장 적고 가장 완만한 것을 고른다 */
+function chooseCurve(A, B, ed, obs){
+  const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy);
+  if(L < 40) return 0;
+  const ux = dx/L, uy = dy/L, nx = -uy, ny = ux;
+  const CL = 28;                                   // 노드 가장자리로부터 확보할 여유
+  const base = Math.min(Math.max(L*0.06, 8), 40);  // 기본 완만한 굴곡
+  const maxK = Math.min(L*0.5, 260);
+  const near = [];
+  for(const o of obs){
+    if(o.id === ed.from || o.id === ed.to) continue;
+    const px = o.x - A.x, py = o.y - A.y;
+    const t = (px*ux + py*uy)/L;
+    if(t < 0.05 || t > 0.95) continue;
+    if(Math.abs(px*nx + py*ny) > o.r + CL + maxK/2) continue;
+    near.push(o);
+  }
+  if(!near.length) return base;
+  const STEPS = 7, SAMPLES = 10;
+  let best = base, bestScore = Infinity;
+  for(const sg of [1, -1]){
+    for(let i = 0; i <= STEPS; i++){
+      const k = sg * (base + (maxK - base) * i/STEPS);
+      let pen = 0;
+      for(const o of near){
+        let md = Infinity;
+        for(let s = 1; s < SAMPLES; s++){
+          const t = s/SAMPLES, w = 2*t*(1-t);
+          const cx = A.x + dx*t + nx*w*k, cy = A.y + dy*t + ny*w*k;
+          const dd = Math.hypot(cx - o.x, cy - o.y) - o.r;
+          if(dd < md) md = dd;
+        }
+        if(md < CL) pen += (CL - md);
+      }
+      const score = pen*10 + Math.abs(k)*0.02 + (sg < 0 ? 0.001 : 0);
+      if(score < bestScore){ bestScore = score; best = k; }
+    }
+  }
+  return best;
+}
+
+function setEdgeGeom(refs, A, B, obs){
+  const k = (edgeShape === 'curve') ? chooseCurve(A, B, refs.ed, obs || buildObstacles()) : 0;
+  const g = edgePath(A, B, k);
+  refs.line.setAttribute('d', g.d);
+  refs.hit.setAttribute('d', g.d);
+  if(refs.lbl){
+    refs.lbl.setAttribute('transform', `translate(${g.mx},${g.my})`);
+  }
+  if(refs.detail){
+    refs.detail.style.left = g.mx + 'px';
+    refs.detail.style.top  = g.my + 'px';
+  }
+}
+
+/* 드래그/트윈 중 지오메트리만 갱신 (전체 재렌더 없이) */
+function updateEdgesFor(nodeId){
+  const tab = curTab(); if(!tab) return;
+  const obs = buildObstacles();
+  tab.edges.forEach(ed => {
+    if(ed.from !== nodeId && ed.to !== nodeId) return;
+    const refs = edgeEls[ed.id]; if(!refs) return;
+    const A = centerOf(ed.from), B = centerOf(ed.to);
+    if(A && B) setEdgeGeom(refs, A, B, obs);
+  });
+}
+function updateAllEdgeGeom(){
+  const obs = buildObstacles();
+  Object.values(edgeEls).forEach(refs => {
+    const A = centerOf(refs.ed.from), B = centerOf(refs.ed.to);
+    if(A && B) setEdgeGeom(refs, A, B, obs);
+  });
+}
+/* ==================================================================
+ * §5-2 노드 상호작용 — 클릭 펼침 / 3px 드래그 / 0.5s 롱프레스
+ * ================================================================== */
+function wireNode(el, n){
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    if(_justDragged){ _justDragged = false; return; }   // ⚠ 드래그 후 펼침 방지
+    if(linkMode.active){ finishLink(n.id); return; }
+    sel = {nodeId:n.id, edgeId:null};
+    n._exp = !n._exp;
+    renderAll();
+  });
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault(); e.stopPropagation();
+    openNodeMenu(n, e.clientX, e.clientY);
+  });
+  el.addEventListener('pointerdown', e => {
+    if(e.button === 2) return;
+    e.stopPropagation();
+    closeCtx();
+    const sx = e.clientX, sy = e.clientY, ox = n.x, oy = n.y;
+    let dragging = false, longFired = false;
+
+    /* 롱프레스 0.5s — 태블릿 메뉴 (§5-2) */
+    const lp = setTimeout(() => {
+      longFired = true;
+      _justDragged = true;                    // 이어지는 click 억제
+      endMove();                              // 진행 중 드래그 강제 해제
+      try{ el.dispatchEvent(new PointerEvent('pointerup', {bubbles:true})); }catch(_){}
+      try{ el.dispatchEvent(new MouseEvent('mouseup', {bubbles:true})); }catch(_){}
+      openNodeMenu(n, sx, sy);
+    }, 500);
+
+    const mv = ev => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if(Math.hypot(dx, dy) > 10) clearTimeout(lp);   // 10px 이동 → 롱프레스 취소
+      if(!dragging && editMode && Math.hypot(dx, dy) > 3){
+        dragging = true;
+        el.classList.add('drag');
+        clearTimeout(lp);
+      }
+      if(dragging){
+        n.x = ox + dx / view.z;
+        n.y = oy + dy / view.z;
+        el.style.left = n.x + 'px';
+        el.style.top  = n.y + 'px';
+        updateEdgesFor(n.id);
+      }
+    };
+    function endMove(){
+      clearTimeout(lp);
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', endMove);
+      window.removeEventListener('pointercancel', endMove);
+      el.classList.remove('drag');
+      if(dragging && !longFired){
+        _justDragged = true;
+        n.x = Math.round(n.x); n.y = Math.round(n.y);
+        commit();
+        renderEdges();
+      }
+      dragging = false;
+    }
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', endMove);
+    window.addEventListener('pointercancel', endMove);
+    /* §8-1: 재렌더 시 남은 리스너 강제 정리 */
+    cleanupFns.push(() => {
+      clearTimeout(lp);
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', endMove);
+      window.removeEventListener('pointercancel', endMove);
+    });
+  });
+}
+
+/* 엣지 클릭/우클릭/롱프레스 (§5-3) — 클릭 시 상세 카드 토글 */
+function wireEdge(el, ed){
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    if(_justDragged){ _justDragged = false; return; }
+    sel = (sel.edgeId === ed.id) ? {nodeId:null, edgeId:null} : {nodeId:null, edgeId:ed.id};
+    renderAll();
+  });
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault(); e.stopPropagation();
+    openEdgeMenu(ed, e.clientX, e.clientY);
+  });
+  attachPress(el, (x,y) => openEdgeMenu(ed, x, y));
+}
+
+/* 상세 카드: 다시 클릭하면 원래 라벨로 복귀, 우클릭/롱프레스는 메뉴 */
+function wireEdgeDetail(el, ed){
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    if(_justDragged){ _justDragged = false; return; }
+    sel = {nodeId:null, edgeId:null};
+    renderAll();
+  });
+  el.addEventListener('pointerdown', e => { if(e.button !== 2) e.stopPropagation(); });
+  el.addEventListener('wheel', e => {               // 긴 설명 스크롤 중엔 캔버스 줌 방지
+    const d = el.querySelector('.ed-d');
+    if(d && d.scrollHeight > d.clientHeight) e.stopPropagation();
+  }, {passive:true});
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault(); e.stopPropagation();
+    openEdgeMenu(ed, e.clientX, e.clientY);
+  });
+  attachPress(el, (x,y) => openEdgeMenu(ed, x, y));
+}
+
+/* 범용 롱프레스 (0.5s / 10px 취소) */
+function attachPress(el, onLong){
+  el.addEventListener('pointerdown', e => {
+    if(e.button === 2) return;
+    const sx = e.clientX, sy = e.clientY;
+    const lp = setTimeout(() => { _justDragged = true; cleanup(); onLong(sx, sy); }, 500);
+    const mv = ev => { if(Math.hypot(ev.clientX-sx, ev.clientY-sy) > 10) cleanup(); };
+    const up = () => cleanup();
+    function cleanup(){
+      clearTimeout(lp);
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', up);
+    }
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', up);
+    cleanupFns.push(cleanup);
+  });
+}
+
+/* ==================================================================
+ * 컨텍스트 메뉴
+ * ================================================================== */
+function openCtx(items, x, y){
+  const list = items.filter(it => editMode || (!it.eo));
+  while(list[0]?.sep) list.shift();
+  while(list[list.length-1]?.sep) list.pop();
+  const norm = [];
+  list.forEach(it => { if(it.sep && norm[norm.length-1]?.sep) return; norm.push(it); });
+  if(!norm.length) return;
+
+  ctxEl.innerHTML = '';
+  norm.forEach(it => {
+    if(it.sep){
+      const d = document.createElement('div'); d.className = 'cm-sep';
+      ctxEl.appendChild(d); return;
+    }
+    const b = document.createElement('button');
+    b.className = 'cm-i' + (it.danger ? ' danger' : '');
+    b.textContent = it.t;
+    b.onclick = () => { closeCtx(); it.cb(); };
+    ctxEl.appendChild(b);
+  });
+  ctxEl.hidden = false;
+  ctxEl.style.left = '0px'; ctxEl.style.top = '0px';
+  const r = ctxEl.getBoundingClientRect();
+  ctxEl.style.left = Math.max(4, Math.min(x, innerWidth  - r.width  - 8)) + 'px';
+  ctxEl.style.top  = Math.max(4, Math.min(y, innerHeight - r.height - 8)) + 'px';
+}
+function closeCtx(){ ctxEl.hidden = true; }
+
+function openNodeMenu(n, x, y){
+  openCtx([
+    {t:'✏️ 노드 편집',        eo:true, cb:() => openNodeModal(n)},
+    {t:'🔗 관계 추가',        eo:true, cb:() => startLink(n.id)},
+    {t:'🧭 주인공 방문',               cb:() => openVisitModal(n)},
+    {sep:true},
+    {t:'💡 현재 노드 추천',            cb:() => openRecNode(n)},
+    {t:'🌱 하위 노드 AI 추천',          cb:() => openRecChildren(n)},
+    {sep:true},
+    {t:'🗑 삭제',             eo:true, danger:true, cb:() => askDeleteNode(n)}
+  ], x, y);
+}
+function openEdgeMenu(ed, x, y){
+  openCtx([
+    {t:'✏️ 관계 편집',   eo:true, cb:() => openEdgeModal(ed)},
+    {t:'💡 관계 AI 추천',         cb:() => openRecEdge(ed)},
+    {sep:true},
+    {t:'🗑 삭제',        eo:true, danger:true, cb:() => askDeleteEdge(ed)}
+  ], x, y);
+}
+
+/* ==================================================================
+ * 노드 / 관계 편집 모달
+ * ================================================================== */
+function openNodeModal(node, presetPos){
+  if(!reqEdit()) return;
+  const isNew = !node;
+  const ov = openModal({
+    title: isNew ? '노드 추가' : '노드 편집',
+    body: `
+      <div><label>타입</label><select id="nmType">
+        ${TYPES.map(k => `<option value="${k}" ${node && node.type===k ? 'selected':''}>${TI[k]} ${TL[k]}</option>`).join('')}
+      </select></div>
+      <div><label>이름</label><input id="nmName" maxlength="60" value="${escHtml(node?.name || '')}" placeholder="예: 은빛 탑"></div>
+      <div><label>설명</label><textarea id="nmDesc" rows="5" placeholder="이 요소에 대한 설정을 적어주세요">${escHtml(node?.desc || '')}</textarea></div>`,
+    footer: `<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="s">저장</button>`
+  });
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  ov.querySelector('[data-a=s]').onclick = () => {
+    const type = ov.querySelector('#nmType').value;
+    const name = ov.querySelector('#nmName').value.trim();
+    const desc = ov.querySelector('#nmDesc').value.trim();
+    if(!name){ toast('이름을 입력해주세요', true); return; }
+    const t = curTab();
+    if(isNew){
+      const c = presetPos || viewCenterWorld();
+      const nn = {id:gid(), type, name, desc,
+                  x:Math.round(c.x - 100 + (Math.random()*60-30)),
+                  y:Math.round(c.y - 35  + (Math.random()*60-30)), _exp:false};
+      t.nodes.push(nn);
+      sel = {nodeId:nn.id, edgeId:null};
+    }else{
+      Object.assign(node, {type, name, desc});
+    }
+    commit(); renderAll(); closeModal(ov);
+  };
+}
+
+function openEdgeModal(edge, pre){
+  if(!reqEdit()) return;
+  const t = curTab();
+  const isNew = !edge;
+  const from = isNew ? pre.from : edge.from;
+  const to   = isNew ? pre.to   : edge.to;
+  const fn = nodeById(t, from)?.name ?? '?';
+  const tn = nodeById(t, to)?.name ?? '?';
+  const ov = openModal({
+    title: isNew ? '관계 추가' : '관계 편집',
+    body: `
+      <div class="infobox">${escHtml(fn)} &nbsp;→&nbsp; ${escHtml(tn)}</div>
+      <div><label>관계명 (4자 이내 권장)</label><input id="emLabel" maxlength="20" value="${escHtml(edge?.label || '')}" placeholder="예: 스승"></div>
+      <div><label>관계 상세 설명</label><textarea id="emDesc" rows="4">${escHtml(edge?.desc || '')}</textarea></div>
+      <label style="display:flex;align-items:center;gap:9px;color:var(--text2);font-size:13px;margin:0;cursor:pointer">
+        <input type="checkbox" id="emParent" style="width:auto" ${(edge?.isParent) ? 'checked':''}>
+        부모-자식(계층) 관계 — 실선으로 표시되며 🔀 정렬의 기준이 됩니다
+      </label>`,
+    footer: `<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="s">저장</button>`
+  });
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  ov.querySelector('[data-a=s]').onclick = () => {
+    const label = ov.querySelector('#emLabel').value.trim();
+    const desc = ov.querySelector('#emDesc').value.trim();
+    const isParent = ov.querySelector('#emParent').checked;
+    if(isNew){
+      const ne = {id:gid(), from, to, label, desc, isParent};
+      t.edges.push(ne);
+      sel = {nodeId:null, edgeId:ne.id};
+    }else{
+      Object.assign(edge, {label, desc, isParent});
+    }
+    commit(); renderAll(); closeModal(ov);
+  };
+}
+
+/* ==================================================================
+ * §5-3 관계 추가 모드 — 배너 → 대상 클릭, ESC 취소
+ * ================================================================== */
+function startLink(fromId){
+  if(!reqEdit()) return;
+  closeCtx();
+  linkMode = {active:true, from:fromId};
+  bannerEl.hidden = false;
+}
+function exitLink(){
+  linkMode = {active:false, from:null};
+  bannerEl.hidden = true;
+}
+function finishLink(toId){
+  const from = linkMode.from;
+  if(toId === from){ toast('같은 노드에는 연결할 수 없습니다', true); return; }
+  const t = curTab();
+  if(t.edges.some(e => !e._aiPreview &&
+      ((e.from===from && e.to===toId) || (e.from===toId && e.to===from)))){
+    toast('이미 연결되어 있는 노드입니다', true);
+    exitLink(); return;
+  }
+  exitLink();
+  openEdgeModal(null, {from, to:toId});
+}
+
+/* ==================================================================
+ * 삭제 — 노드는 자식 처리 선택 (§5-2)
+ * ================================================================== */
+function childIdsOf(id){
+  const t = curTab();
+  const ids = new Set(t.nodes.map(n => n.id));
+  return t.edges.filter(e => e.isParent && e.from === id && ids.has(e.to)).map(e => e.to);
+}
+function descendantsOf(id){
+  const out = [], seen = new Set([id]);
+  const q = [...childIdsOf(id)];
+  while(q.length){
+    const c = q.shift();
+    if(seen.has(c)) continue;
+    seen.add(c); out.push(c);
+    q.push(...childIdsOf(c));
+  }
+  return out;
+}
+function doDeleteNodes(ids){
+  const t = curTab();
+  const set = new Set(ids);
+  t.nodes = t.nodes.filter(n => !set.has(n.id));
+  t.edges = t.edges.filter(e => !set.has(e.from) && !set.has(e.to));
+  if(set.has(sel.nodeId)) sel.nodeId = null;
+  commit(); renderAll();
+  toast('삭제했습니다');
+}
+function askDeleteNode(n){
+  if(!reqEdit()) return;
+  const kids = childIdsOf(n.id);
+  if(!kids.length){
+    confirmModal({
+      title:'노드 삭제', danger:true, ok:'삭제',
+      html:`"<b>${escHtml(n.name)}</b>" 노드를 삭제할까요?<br>연결된 관계도 함께 삭제됩니다.`,
+      onOk:() => doDeleteNodes([n.id])
+    });
+    return;
+  }
+  const ov = openModal({
+    title:'노드 삭제',
+    body:`"<b>${escHtml(n.name)}</b>" 아래에 하위 노드 <b>${descendantsOf(n.id).length}개</b>가 연결되어 있습니다.
+      <div class="infobox"><b>함께 삭제</b> — 모든 하위 노드를 재귀적으로 삭제합니다<br>
+      <b>관계만 해제</b> — 하위 노드는 남기고 이 노드만 삭제합니다</div>`,
+    footer:`<button class="btn" data-a="c">취소</button>
+            <button class="btn" data-a="u">관계만 해제</button>
+            <button class="btn dngr" data-a="d">함께 삭제</button>`
+  });
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  ov.querySelector('[data-a=u]').onclick = () => { closeModal(ov); doDeleteNodes([n.id]); };
+  ov.querySelector('[data-a=d]').onclick = () => { closeModal(ov); doDeleteNodes([n.id, ...descendantsOf(n.id)]); };
+}
+function askDeleteEdge(ed){
+  if(!reqEdit()) return;
+  const t = curTab();
+  const fn = nodeById(t, ed.from)?.name ?? '?';
+  const tn = nodeById(t, ed.to)?.name ?? '?';
+  confirmModal({
+    title:'관계 삭제', danger:true, ok:'삭제',
+    html:`${escHtml(fn)} → ${escHtml(tn)}<br>"${escHtml(ed.label || '(라벨 없음)')}" 관계를 삭제할까요?`,
+    onOk:() => {
+      t.edges = t.edges.filter(e => e.id !== ed.id);
+      if(sel.edgeId === ed.id) sel.edgeId = null;
+      commit(); renderAll(); toast('삭제했습니다');
+    }
+  });
+}
+
+/* ==================================================================
+ * 캔버스 팬/줌/배경 클릭 (bindStaticUI에서 호출)
+ * ================================================================== */
+function bindCanvasEvents(){
+  wrapEl.addEventListener('wheel', e => {
+    e.preventDefault();
+    const r = wrapEl.getBoundingClientRect();
+    zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.13 : 1/1.13);
+  }, {passive:false});
+
+  wrapEl.addEventListener('contextmenu', e => e.preventDefault());
+
+  wrapEl.addEventListener('pointerdown', e => {
+    if(e.target !== wrapEl && e.target !== worldEl && e.target !== edgeSvg) return;
+    if(e.button === 2) return;
+    closeCtx();
+    const sx = e.clientX, sy = e.clientY, opx = view.px, opy = view.py;
+    let moved = false;
+    wrapEl.classList.add('panning');
+    const mv = ev => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if(Math.hypot(dx, dy) > 3) moved = true;
+      view.px = opx + dx; view.py = opy + dy;
+      applyView();
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', up);
+      wrapEl.classList.remove('panning');
+      if(!moved && (sel.nodeId || sel.edgeId)){
+        sel = {nodeId:null, edgeId:null};
+        renderAll();
+      }
+    };
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', up);
+    cleanupFns.push(() => {
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', up);
+      wrapEl.classList.remove('panning');
+    });
+  });
+}
+/* ==================================================================
+ * §5-4 노드 자동 정렬 — 부모-자식 관계만 사용하는 방사형 트리
+ * ================================================================== */
+function computeRadialLayout(tab){
+  const ids = tab.nodes.filter(n => !n._aiPreview).map(n => n.id);
+  const idset = new Set(ids);
+  const CX = 2000, CY = 2000, R0 = 360, DR = 300;
+
+  /* 부모-자식 지도 (from=부모 → to=자식) */
+  const childMap = {}, hasParent = {};
+  tab.edges.filter(e => !e._aiPreview && e.isParent &&
+                        idset.has(e.from) && idset.has(e.to) && e.from !== e.to)
+    .forEach(e => {
+      (childMap[e.from] || (childMap[e.from] = [])).push(e.to);
+      hasParent[e.to] = 1;
+    });
+
+  const inTree = new Set();
+  Object.keys(childMap).forEach(p => { inTree.add(p); childMap[p].forEach(c => inTree.add(c)); });
+
+  const roots = ids.filter(id => inTree.has(id) && !hasParent[id]);
+  const isolated = ids.filter(id => !inTree.has(id));
+  const multi = roots.length > 1;
+  const ringFor = depth => multi ? (R0*0.55 + depth*DR)
+                                 : (depth === 0 ? 0 : R0 + (depth-1)*DR);
+
+  /* 리프 수 기반 가중치 — 자식이 많은 가지에 더 넓은 각도 */
+  const leaf = {}, seenW = new Set();
+  function weigh(id){
+    if(seenW.has(id)) return 0;
+    seenW.add(id);
+    const ch = childMap[id] || [];
+    if(!ch.length){ leaf[id] = 1; return 1; }
+    let s = 0; ch.forEach(c => s += weigh(c));
+    leaf[id] = Math.max(1, s);
+    return leaf[id];
+  }
+  roots.forEach(weigh);
+
+  const pos = {}, placed = new Set();
+  let maxDepth = 0;
+  function place(id, a0, a1, depth){
+    if(placed.has(id)) return;
+    placed.add(id);
+    maxDepth = Math.max(maxDepth, depth);
+    const mid = (a0 + a1) / 2, r = ringFor(depth);
+    pos[id] = {x: CX + r*Math.cos(mid), y: CY + r*Math.sin(mid)};
+    const ch = (childMap[id] || []).filter(c => !placed.has(c));
+    if(!ch.length) return;
+    const tot = ch.reduce((s,c) => s + (leaf[c] || 1), 0) || 1;
+    let a = a0;
+    ch.forEach(c => {
+      const span = (a1 - a0) * ((leaf[c] || 1) / tot);
+      place(c, a, a + span, depth + 1);
+      a += span;
+    });
+  }
+  if(roots.length){
+    const W = roots.reduce((s,r) => s + (leaf[r] || 1), 0) || 1;
+    let a = -Math.PI / 2;
+    roots.forEach(r => {                 /* 트리가 여러 개면 원을 트리별로 분할 */
+      const span = 2*Math.PI * ((leaf[r] || 1) / W);
+      place(r, a, a + span, 0);
+      a += span;
+    });
+  }
+  /* 사이클 등으로 미배치된 트리 노드는 고립 취급 */
+  ids.forEach(id => { if(!placed.has(id)) isolated.push(id); });
+
+  /* 고립 노드: 최외곽 링에 균등 배치 */
+  const uniqIso = [...new Set(isolated)].filter(id => !pos[id]);
+  if(uniqIso.length){
+    const rr = roots.length ? ringFor(maxDepth) + DR : R0;
+    const step = 2*Math.PI / uniqIso.length;
+    uniqIso.forEach((id, i) => {
+      const a = -Math.PI/2 + step*(i + 0.5);
+      pos[id] = {x: CX + rr*Math.cos(a), y: CY + rr*Math.sin(a)};
+    });
+  }
+
+  /* 겹침 제거 — Force Repulsion, 최소 간격 220px */
+  const arr = ids.map(id => ({id, x:(pos[id]||{x:CX}).x, y:(pos[id]||{y:CY}).y}));
+  const MIN = 220;
+  for(let it = 0; it < 90; it++){
+    let movedAny = false;
+    for(let i = 0; i < arr.length; i++){
+      for(let j = i+1; j < arr.length; j++){
+        const a = arr[i], b = arr[j];
+        let dx = b.x - a.x, dy = b.y - a.y;
+        let d = Math.hypot(dx, dy);
+        if(d < 0.5){ dx = Math.random()-0.5; dy = Math.random()-0.5; d = Math.hypot(dx,dy); }
+        if(d < MIN){
+          const push = (MIN - d) / 2 / d;
+          a.x -= dx*push; a.y -= dy*push;
+          b.x += dx*push; b.y += dy*push;
+          movedAny = true;
+        }
+      }
+    }
+    if(!movedAny) break;
+  }
+  arr.forEach(p => {
+    p.x = Math.min(3850, Math.max(150, p.x));
+    p.y = Math.min(3850, Math.max(150, p.y));
+  });
+
+  /* 중심 좌표 → 카드 좌상단 좌표 */
+  const out = {};
+  arr.forEach(p => {
+    const s = nodeSizes[p.id] || {w:200, h:70};
+    out[p.id] = {x: Math.round(p.x - s.w/2), y: Math.round(p.y - s.h/2)};
+  });
+  return out;
+}
+
+/* 0.5초 트랜지션 애니메이션 후 자동 줌핏 */
+function tweenTo(targets){
+  const tab = curTab();
+  const from = {};
+  tab.nodes.forEach(n => { from[n.id] = {x:n.x, y:n.y}; });
+  const t0 = performance.now();
+  const ease = p => p < .5 ? 2*p*p : 1 - Math.pow(-2*p + 2, 2)/2;
+  function step(now){
+    const p = Math.min(1, (now - t0)/500);
+    const e = ease(p);
+    tab.nodes.forEach(n => {
+      const tg = targets[n.id]; if(!tg) return;
+      n.x = from[n.id].x + (tg.x - from[n.id].x)*e;
+      n.y = from[n.id].y + (tg.y - from[n.id].y)*e;
+      const el = nodesEl.querySelector(`[data-id="${n.id}"]`);
+      if(el){ el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; }
+    });
+    updateAllEdgeGeom();
+    if(p < 1){ requestAnimationFrame(step); }
+    else{
+      tab.nodes.forEach(n => { n.x = Math.round(n.x); n.y = Math.round(n.y); });
+      commit();
+      renderEdges();
+      zoomFit();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+function askAutoLayout(){
+  if(!reqEdit()) return;
+  const tab = curTab();
+  if(!tab || tab.nodes.length < 2){ toast('정렬할 노드가 부족합니다', true); return; }
+  confirmModal({
+    title:'노드 자동 정렬', ok:'정렬 실행',
+    html:`부모-자식 관계를 기준으로 방사형 트리로 재배치합니다.<br>
+          <span style="color:var(--text3)">일반 관계(점선)는 배치에 영향을 주지 않으며, 현재 좌표는 덮어써집니다.</span>`,
+    onOk:() => tweenTo(computeRadialLayout(tab))
+  });
+}
+/* ==================================================================
+ * §6 AI 호출 헬퍼
+ * ================================================================== */
+async function callClaude(system, messages, maxTokens = 2000){
+  const d = await apiPost('/api/claude', {model:AI_MODEL, max_tokens:maxTokens, system, messages});
+  return (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+}
+
+async function callGemini(prompt, refImgs){
+  const parts = [];
+  (refImgs || []).slice(0,3).forEach(dataUrl => {
+    const m = /^data:(image\/[\w.+-]+);base64,(.+)$/s.exec(dataUrl || '');
+    if(m) parts.push({inlineData:{mimeType:m[1], data:m[2]}});
+  });
+  parts.push({text: prompt});
+  const d = await apiPost('/api/gemini', {
+    model: IMG_MODEL,
+    contents:[{parts}],
+    generationConfig:{responseModalities:['IMAGE','TEXT']}
+  });
+  const outParts = d?.candidates?.[0]?.content?.parts || [];
+  const img = outParts.find(p => p.inlineData);
+  if(!img) throw new Error('이미지가 반환되지 않았습니다');
+  return 'data:' + (img.inlineData.mimeType || 'image/png') + ';base64,' + img.inlineData.data;
+}
+
+/* ==================================================================
+ * §6-4 컨텍스트 빌더 — 노드/관계/사건 목록 문자열 (모든 AI 기능이 재사용)
+ * ================================================================== */
+function buildCtx(tab){
+  const nameOf = id => nodeById(tab, id)?.name ?? '?';
+  const nodesStr = tab.nodes.filter(n => !n._aiPreview)
+    .map(n => `- ${n.name} (${TL[n.type] || '기타'})${n.desc ? ': ' + n.desc : ''}`)
+    .join('\n') || '(없음)';
+  const edgesStr = tab.edges.filter(e => !e._aiPreview)
+    .map(e => `- ${nameOf(e.from)} ${e.isParent ? '⊃(부모→자식)' : '↔'} ${nameOf(e.to)} [${e.label || '관계'}]${e.desc ? ': ' + e.desc : ''}`)
+    .join('\n') || '(없음)';
+  const eventsStr = [...tab.events]
+    .sort((a,b) => (a.order ?? 0) - (b.order ?? 0))
+    .map(ev => `- (order ${ev.order ?? 0}) ${ev.time || '시점 미상'}: ${ev.body}`)
+    .join('\n') || '(없음)';
+  const names = tab.nodes.filter(n => !n._aiPreview).map(n => n.name).filter(Boolean);
+  return {nodesStr, edgesStr, eventsStr, names};
+}
+function worldSystem(tab){
+  const c = buildCtx(tab);
+  return `너는 창작 세계관 구축을 돕는 어시스턴트다. 아래는 사용자가 만들고 있는 세계관의 현재 정보다. 한국어로 답한다.
+
+[세계관 설정]
+${tab.worldPrompt || '(아직 작성되지 않음)'}
+
+[노드 목록]
+${c.nodesStr}
+
+[관계 목록]
+${c.edgesStr}
+
+[사건 연표]
+${c.eventsStr}`;
+}
+
+/* ==================================================================
+ * 우측 패널 (§5-5 ~ §5-7)
+ * ================================================================== */
+const RP_TITLES = {world:'🌐 세계관 설정', chat:'💬 세계관 대화', events:'📜 사건 연표'};
+
+function openPanel(name){
+  if(rpCur === name){ closePanel(); return; }
+  rpCur = name;
+  rpEl.hidden = false;
+  rpTitleEl.textContent = RP_TITLES[name];
+  ['world','chat','events'].forEach(k => {
+    $('#rp' + k[0].toUpperCase() + k.slice(1)).hidden = (k !== name);
+  });
+  ['btnWorld','btnChat','btnEvents'].forEach(id => $('#' + id).classList.remove('on'));
+  $('#btn' + name[0].toUpperCase() + name.slice(1)).classList.add('on');
+  refreshOpenPanels();
+}
+function closePanel(){
+  rpCur = null;
+  rpEl.hidden = true;
+  ['btnWorld','btnChat','btnEvents'].forEach(id => $('#' + id).classList.remove('on'));
+}
+function refreshOpenPanels(){
+  if(!rpCur) return;
+  if(rpCur === 'world') renderWorldPanel();
+  else if(rpCur === 'chat') renderChat();
+  else if(rpCur === 'events') renderEvents();
+}
+
+/* ---------------- §5-5 세계관 패널 ---------------- */
+function renderWorldPanel(){
+  const tab = curTab(); if(!tab) return;
+  const ta = $('#wpText');
+  if(document.activeElement !== ta) ta.value = tab.worldPrompt || '';
+  ta.readOnly = !editMode;
+  const grid = $('#refImgs');
+  grid.innerHTML = '';
+  (tab.refImages || []).slice(0,3).forEach((src, i) => {
+    const slot = document.createElement('div');
+    slot.className = 'ref-slot';
+    slot.innerHTML = `<img src="${src}" alt="참고 이미지 ${i+1}">` +
+                     (editMode ? `<button class="rx" title="삭제">✕</button>` : '');
+    const rx = slot.querySelector('.rx');
+    if(rx) rx.onclick = () => {
+      tab.refImages.splice(i,1);
+      markDirty();                       // refImages는 로컬 전용 (§1-2)
+      renderWorldPanel();
+    };
+    grid.appendChild(slot);
+  });
+  if(editMode && (tab.refImages || []).length < 3){
+    const add = document.createElement('div');
+    add.className = 'ref-slot ref-add';
+    add.textContent = '＋';
+    add.title = '참고 이미지 추가';
+    add.onclick = () => $('#refFile').click();
+    grid.appendChild(add);
+  }
+  if(!editMode && !(tab.refImages || []).length){
+    grid.innerHTML = '<div class="empty" style="padding:8px 0">등록된 이미지가 없습니다</div>';
+  }
+}
+
+function handleRefFile(file){
+  if(!file || !editMode) return;
+  const tab = curTab();
+  if((tab.refImages || []).length >= 3){ toast('이미지는 최대 3장입니다', true); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 640;
+      const k = Math.min(1, MAX / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * k);
+      cv.height = Math.round(img.height * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      tab.refImages.push(cv.toDataURL('image/jpeg', 0.85));
+      markDirty();
+      renderWorldPanel();
+      toast('참고 이미지를 추가했습니다');
+    };
+    img.onerror = () => toast('이미지를 읽지 못했습니다', true);
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ---------------- §5-6 대화 패널 ---------------- */
+function renderChat(){
+  const tab = curTab(); if(!tab) return;
+  if(!tab._chat) tab._chat = [];
+  chatLogEl.innerHTML = '';
+  if(!tab._chat.length){
+    chatLogEl.innerHTML = '<div class="empty">세계관에 대해 무엇이든 물어보세요.<br>설정·노드·관계·사건을 모두 알고 답합니다.</div>';
+  }
+  tab._chat.forEach(m => {
+    const el = document.createElement('div');
+    el.className = 'msg ' + (m.role === 'user' ? 'u' : 'a');
+    el.textContent = m.content;
+    chatLogEl.appendChild(el);
+  });
+  chatLogEl.scrollTop = chatLogEl.scrollHeight;
+}
+
+async function sendChat(){
+  const tab = curTab(); if(!tab) return;
+  const ta = $('#chatText');
+  const text = ta.value.trim();
+  if(!text) return;
+  if(!tab._chat) tab._chat = [];
+  ta.value = '';
+  tab._chat.push({role:'user', content:text});
+  renderChat();
+  const loadEl = document.createElement('div');
+  loadEl.className = 'msg a load';
+  loadEl.textContent = '생각하는 중…';
+  chatLogEl.appendChild(loadEl);
+  chatLogEl.scrollTop = chatLogEl.scrollHeight;
+  const btn = $('#chatSend');
+  btn.disabled = true;
+  try{
+    const reply = await callClaude(
+      worldSystem(tab),
+      tab._chat.map(m => ({role:m.role, content:m.content})),
+      1500
+    );
+    tab._chat.push({role:'assistant', content:reply.trim()});
+  }catch(err){
+    tab._chat.pop();                      // 실패한 질문 롤백
+    ta.value = text;
+    toast(err.message, true);
+  }finally{
+    btn.disabled = false;
+    renderChat();
+  }
+}
+
+/* ---------------- §5-7 사건 패널 ---------------- */
+function renderEvents(){
+  const tab = curTab(); if(!tab) return;
+  evListEl.innerHTML = '';
+  const list = [...tab.events].sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
+  if(!list.length){
+    evListEl.innerHTML = '<div class="empty">아직 기록된 사건이 없습니다</div>';
+    return;
+  }
+  list.forEach(ev => {
+    const el = document.createElement('div');
+    el.className = 'ev';
+    el.innerHTML =
+      `<div class="ev-top"><span class="ev-o">${ev.order ?? 0}</span>` +
+      `<span class="ev-t">${escHtml(ev.time || '시점 미상')}</span>` +
+      `<span class="ev-acts"><button data-a="e" title="편집">✏️</button><button data-a="d" title="삭제">🗑</button></span></div>` +
+      `<div class="ev-b">${escHtml(ev.body || '')}</div>`;
+    el.querySelector('[data-a=e]').onclick = () => openEventModal(ev);
+    el.querySelector('[data-a=d]').onclick = () => {
+      if(!reqEdit()) return;
+      confirmModal({
+        title:'사건 삭제', danger:true, ok:'삭제',
+        html:`"${escHtml((ev.body || '').slice(0,40))}…" 사건을 삭제할까요?`,
+        onOk:() => {
+          const t = curTab();
+          t.events = t.events.filter(x => x.id !== ev.id);
+          commit(); renderEvents();
+        }
+      });
+    };
+    evListEl.appendChild(el);
+  });
+}
+
+function maxOrder(tab){
+  return tab.events.reduce((m,e) => Math.max(m, e.order ?? 0), 0);
+}
+
+function openEventModal(ev){
+  if(!reqEdit()) return;
+  const tab = curTab();
+  const isNew = !ev;
+  const ov = openModal({
+    title: isNew ? '사건 추가' : '사건 편집',
+    body:`
+      <div><label>시간 표현 (자유 형식)</label><input id="evTime" value="${escHtml(ev?.time || '')}" placeholder="예: 1년 전, 왕국력 302년"></div>
+      <div><label>사건 내용</label><textarea id="evBody" rows="5">${escHtml(ev?.body || '')}</textarea></div>
+      <div><label>순서 (낮을수록 과거)</label><input id="evOrder" type="number" step="1" value="${ev ? (ev.order ?? 0) : maxOrder(tab) + 10}"></div>`,
+    footer:`<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="s">저장</button>`
+  });
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  ov.querySelector('[data-a=s]').onclick = () => {
+    const time = ov.querySelector('#evTime').value.trim();
+    const body = ov.querySelector('#evBody').value.trim();
+    const order = parseInt(ov.querySelector('#evOrder').value, 10) || 0;
+    if(!body){ toast('사건 내용을 입력해주세요', true); return; }
+    if(isNew) tab.events.push({id:gid(), time, body, order});
+    else Object.assign(ev, {time, body, order});
+    commit(); renderEvents(); closeModal(ov);
+  };
+}
+
+/* AI 사건 생성 — 기존 노드 이름만 사용 (§6-4) */
+async function aiGenEvent(){
+  if(!reqEdit()) return;
+  const tab = curTab();
+  const btn = $('#evAi');
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '생성 중…';
+  try{
+    const c = buildCtx(tab);
+    const sys = worldSystem(tab) +
+      `\n\n[중요 제약] 사건을 만들 때 반드시 아래 "사용 가능한 이름" 목록에 있는 인물·장소·사물·집단만 등장시켜야 한다. 새로운 고유명사를 만들어내면 안 된다.\n사용 가능한 이름: ${c.names.join(', ') || '(없음)'}`;
+    const user =
+      `이 세계관의 연표에 어울리는 새 사건 1개를 만들어라.\n` +
+      `- 반드시 사용 가능한 이름 목록의 대상만 등장: ${c.names.join(', ') || '(없음)'}\n` +
+      `- 기존 사건들과 시간 흐름이 자연스럽게 이어지도록 order 정수를 정하라. 기존 사건 사이에 끼워 넣어도 된다.\n` +
+      `- 다른 설명 없이 아래 JSON 형식만 출력하라:\n` +
+      `{"time":"자유 형식 시간 표현","body":"사건 내용 2~4문장","order":정수}`;
+    const raw = await callClaude(sys, [{role:'user', content:user}], 1200);
+    const parsed = parseAIJson(raw, 'object');
+    if(!parsed || !parsed.body) throw new Error('AI 응답을 해석하지 못했습니다. 다시 시도해주세요.');
+    tab.events.push({
+      id: gid(),
+      time: String(parsed.time || ''),
+      body: String(parsed.body),
+      order: Number.isFinite(+parsed.order) ? Math.round(+parsed.order) : maxOrder(tab) + 10
+    });
+    commit(); renderEvents();
+    toast('AI가 새 사건을 추가했습니다');
+  }catch(err){
+    toast(err.message, true);
+  }finally{
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+/* ==================================================================
+ * §5-9 AI 노드 생성 — 프롬프트 → 미리보기 배치 → 추가/재생성/닫기
+ * ================================================================== */
+function clearPreview(){
+  const tab = curTab(); if(!tab) return;
+  tab.nodes = tab.nodes.filter(n => !n._aiPreview);
+  tab.edges = tab.edges.filter(e => !e._aiPreview);
+  aiPanelEl.hidden = true;
+}
+function hasPreview(){
+  const tab = curTab();
+  return !!tab && tab.nodes.some(n => n._aiPreview);
+}
+
+function openAiGenModal(){
+  if(!reqEdit()) return;
+  if(hasPreview()){ toast('먼저 현재 미리보기를 확정하거나 닫아주세요', true); return; }
+  const ov = openModal({
+    title:'✨ AI 노드 생성',
+    body:`
+      <div><label>만들고 싶은 설정을 한 줄로 적어주세요</label>
+      <textarea id="agPrompt" rows="4" placeholder="예: 몰락한 해상 왕국의 마지막 공주와 그녀를 쫓는 해적단, 저주받은 나침반">${escHtml(lastGenPrompt)}</textarea></div>
+      <div class="infobox">프롬프트에 등장하는 주요 인물·장소·사물·집단이 모두 노드로 만들어지고, 기존 노드와도 이름이 맞으면 자동으로 연결됩니다. 생성 결과는 미리보기로 먼저 표시됩니다.</div>`,
+    footer:`<button class="btn" data-a="c">취소</button><button class="btn gold" data-a="g">생성하기</button>`
+  });
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  ov.querySelector('[data-a=g]').onclick = () => {
+    const p = ov.querySelector('#agPrompt').value.trim();
+    if(!p){ toast('프롬프트를 입력해주세요', true); return; }
+    closeModal(ov);
+    runAiGen(p);
+  };
+}
+
+async function runAiGen(prompt){
+  lastGenPrompt = prompt;
+  genOverlayEl.hidden = false;
+  try{
+    const tab = curTab();
+    const c = buildCtx(tab);
+    const sys = worldSystem(tab) + `
+
+너의 임무: 사용자의 프롬프트를 읽고 세계관 마인드맵에 추가할 노드와 관계를 JSON으로 설계한다.
+규칙:
+- 프롬프트에 등장하는 모든 주요 명사(인물·장소·사물·집단·개념)를 각각 노드로 만든다.
+- type은 반드시 다음 중 하나: world, group, space, char, item, trait, custom
+- 이미 존재하는 노드(${c.names.join(', ') || '없음'})와 관련이 있으면, 그 "정확한 이름"을 from/to에 써서 관계로 연결한다. 기존 노드를 새로 만들지 않는다.
+- 관계 label은 4자 이내의 짧은 한국어. 계층(소속/포함) 관계면 isParent를 true로.
+- 다른 텍스트 없이 JSON 하나만 출력한다.`;
+    const user =
+      `프롬프트: ${prompt}\n\n아래 형식의 JSON만 출력:\n` +
+      `{"nodes":[{"type":"char","name":"이름","desc":"설정 설명 1~2문장"}],` +
+      `"edges":[{"from":"이름","to":"이름","label":"관계","desc":"관계 설명","isParent":false}]}`;
+    const raw = await callClaude(sys, [{role:'user', content:user}], 3800);
+    let parsed = parseAIJson(raw, 'object');
+    if(Array.isArray(parsed)) parsed = {nodes:parsed, edges:[]};
+    const newNodes = Array.isArray(parsed?.nodes) ? parsed.nodes : [];
+    const newEdges = Array.isArray(parsed?.edges) ? parsed.edges : [];
+    if(!newNodes.length && !newEdges.length)
+      throw new Error('AI 응답을 해석하지 못했습니다. 프롬프트를 조금 바꿔 다시 시도해주세요.');
+
+    /* 이름 → id 매핑 (기존 노드 우선) */
+    const nameToId = {};
+    tab.nodes.filter(n => !n._aiPreview).forEach(n => { nameToId[n.name] = n.id; });
+
+    const center = viewCenterWorld();
+    const fresh = newNodes.filter(nd => nd && nd.name && !nameToId[nd.name]);
+    const cols = Math.max(1, Math.ceil(Math.sqrt(fresh.length)));
+    let addedNodes = 0;
+    fresh.forEach((nd, i) => {
+      const col = i % cols, row = Math.floor(i / cols);
+      const nn = {
+        id: gid(),
+        type: TYPES.includes(nd.type) ? nd.type : 'custom',
+        name: String(nd.name).slice(0,60),
+        desc: String(nd.desc || ''),
+        x: Math.round(center.x - (cols-1)*135 + col*270 + (Math.random()*56-28)),
+        y: Math.round(center.y - 120 + row*180 + (Math.random()*44-22)),
+        _exp: true,           /* 설명 펼친 상태로 배치 (§5-9) */
+        _aiPreview: true
+      };
+      tab.nodes.push(nn);
+      nameToId[nn.name] = nn.id;
+      addedNodes++;
+    });
+
+    let addedEdges = 0;
+    newEdges.forEach(ed => {
+      const from = nameToId[ed?.from], to = nameToId[ed?.to];
+      if(!from || !to || from === to) return;
+      if(tab.edges.some(e => (e.from===from && e.to===to) || (e.from===to && e.to===from))) return;
+      tab.edges.push({
+        id: gid(), from, to,
+        label: String(ed.label || '').slice(0,20),
+        desc: String(ed.desc || ''),
+        isParent: !!ed.isParent,
+        _aiPreview: true
+      });
+      addedEdges++;
+    });
+
+    if(!addedNodes && !addedEdges)
+      throw new Error('추가할 새 노드가 없습니다. 프롬프트를 더 구체적으로 적어주세요.');
+
+    renderAll();
+    aiPanelInfoEl.innerHTML = `새 노드 <b>${addedNodes}개</b> · 새 관계 <b>${addedEdges}개</b><br>캔버스에서 미리보기를 확인해주세요.`;
+    aiPanelEl.hidden = false;
+  }catch(err){
+    toast(err.message, true);
+    clearPreview();
+    renderAll();
+  }finally{
+    genOverlayEl.hidden = true;
+  }
+}
+
+function acceptPreview(){
+  const tab = curTab(); if(!tab) return;
+  let n = 0, e = 0;
+  tab.nodes.forEach(x => { if(x._aiPreview){ delete x._aiPreview; n++; } });
+  tab.edges.forEach(x => { if(x._aiPreview){ delete x._aiPreview; e++; } });
+  aiPanelEl.hidden = true;
+  commit(); renderAll();
+  toast(`노드 ${n}개 · 관계 ${e}개를 추가했습니다`);
+}
+
+/* ==================================================================
+ * §5-10 AI 추천 (노드 / 하위 노드 / 관계) — 카드 3개 + ↻
+ * ================================================================== */
+function openRecModal(title, fetcher, applyFn){
+  const ov = openModal({
+    title, wide:true,
+    body:`<div id="recBody" style="display:flex;flex-direction:column;gap:10px"></div>`,
+    footer:`<button class="btn" data-a="r">↻ 다시 추천</button><button class="btn" data-a="c">닫기</button>`
+  });
+  const bodyEl = ov.querySelector('#recBody');
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  ov.querySelector('[data-a=r]').onclick = () => load();
+  async function load(){
+    bodyEl.innerHTML = `<div class="center"><div class="spin"></div>AI가 추천을 만드는 중…</div>`;
+    try{
+      const items = await fetcher();
+      if(!items.length) throw new Error('추천 결과를 해석하지 못했습니다. 다시 시도해주세요.');
+      bodyEl.innerHTML = '';
+      items.slice(0,3).forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `<div class="c-t">${escHtml(item._t)}</div><div class="c-d">${escHtml(item._d)}</div>`;
+        card.onclick = () => {
+          if(!reqEdit()) return;
+          applyFn(item);
+          closeModal(ov);
+        };
+        bodyEl.appendChild(card);
+      });
+      const hint = document.createElement('div');
+      hint.className = 'empty';
+      hint.style.padding = '4px 0 0';
+      hint.textContent = editMode ? '카드를 클릭하면 적용됩니다' : '적용하려면 편집 모드가 필요합니다';
+      bodyEl.appendChild(hint);
+    }catch(err){
+      bodyEl.innerHTML = `<div class="empty">${escHtml(err.message)}</div>`;
+    }
+  }
+  load();
+}
+
+const parse3 = raw => {
+  const v = parseAIJson(raw, 'array');
+  if(Array.isArray(v)) return v.filter(x => x && typeof x === 'object');
+  if(v && typeof v === 'object'){
+    const arr = Object.values(v).find(Array.isArray);
+    if(arr) return arr.filter(x => x && typeof x === 'object');
+  }
+  return [];
+};
+
+function openRecNode(node){
+  const tab = curTab();
+  openRecModal(`💡 "${node.name}" 개선 추천`,
+    async () => {
+      const sys = worldSystem(tab);
+      const user =
+        `아래 노드를 세계관에 더 어울리게 개선한 3가지 버전을 제안하라.\n` +
+        `대상 노드 — 타입: ${TL[node.type]}, 이름: ${node.name}, 설명: ${node.desc || '(없음)'}\n` +
+        `타입은 그대로 두고 이름과 설명만 개선한다. 다른 텍스트 없이 JSON 배열만 출력:\n` +
+        `[{"name":"개선된 이름","desc":"개선된 설명 2~3문장"}] (정확히 3개)`;
+      const items = parse3(await callClaude(sys, [{role:'user', content:user}], 1600));
+      return items.filter(i => i.name).map(i => ({...i, _t:i.name, _d:i.desc || ''}));
+    },
+    item => {
+      Object.assign(node, {name:String(item.name).slice(0,60), desc:String(item.desc || '')});
+      commit(); renderAll();
+      toast('노드를 개선안으로 교체했습니다');
+    });
+}
+
+function openRecChildren(node){
+  const tab = curTab();
+  openRecModal(`🌱 "${node.name}" 하위 노드 추천`,
+    async () => {
+      const sys = worldSystem(tab);
+      const user =
+        `"${node.name}" (${TL[node.type]}: ${node.desc || '설명 없음'}) 아래에 자식으로 추가하면 좋을 노드 3가지를 제안하라.\n` +
+        `type은 world/group/space/char/item/trait/custom 중 하나. 기존 노드와 이름이 겹치지 않게.\n` +
+        `다른 텍스트 없이 JSON 배열만 출력: [{"type":"char","name":"이름","desc":"설명 2~3문장"}] (정확히 3개)`;
+      const items = parse3(await callClaude(sys, [{role:'user', content:user}], 1600));
+      return items.filter(i => i.name).map(i => ({...i, _t:`${TI[TYPES.includes(i.type)?i.type:'custom']} ${i.name}`, _d:i.desc || ''}));
+    },
+    item => {
+      const a = Math.random() * Math.PI * 2;
+      const nn = {
+        id: gid(),
+        type: TYPES.includes(item.type) ? item.type : 'custom',
+        name: String(item.name).slice(0,60),
+        desc: String(item.desc || ''),
+        x: Math.round(node.x + Math.cos(a)*260),
+        y: Math.round(node.y + Math.sin(a)*220 + 40),
+        _exp: false
+      };
+      tab.nodes.push(nn);
+      tab.edges.push({id:gid(), from:node.id, to:nn.id, label:'', desc:'', isParent:true});
+      sel = {nodeId:nn.id, edgeId:null};
+      commit(); renderAll();
+      toast(`"${nn.name}" 하위 노드를 추가했습니다`);
+    });
+}
+
+function openRecEdge(edge){
+  const tab = curTab();
+  const fn = nodeById(tab, edge.from), tn = nodeById(tab, edge.to);
+  openRecModal(`💡 "${fn?.name ?? '?'} ↔ ${tn?.name ?? '?'}" 관계 추천`,
+    async () => {
+      const sys = worldSystem(tab);
+      const user =
+        `두 노드 사이에 어울리는 관계 3가지를 제안하라.\n` +
+        `A — ${TL[fn?.type] ?? '?'} "${fn?.name ?? '?'}": ${fn?.desc || '설명 없음'}\n` +
+        `B — ${TL[tn?.type] ?? '?'} "${tn?.name ?? '?'}": ${tn?.desc || '설명 없음'}\n` +
+        `label은 4자 이내 한국어. 다른 텍스트 없이 JSON 배열만 출력:\n` +
+        `[{"label":"관계","desc":"관계 상세 설명 1~2문장"}] (정확히 3개)`;
+      const items = parse3(await callClaude(sys, [{role:'user', content:user}], 1400));
+      return items.filter(i => i.label).map(i => ({...i, _t:i.label, _d:i.desc || ''}));
+    },
+    item => {
+      Object.assign(edge, {label:String(item.label).slice(0,20), desc:String(item.desc || '')});
+      commit(); renderAll();
+      toast('관계를 갱신했습니다');
+    });
+}
+
+/* ==================================================================
+ * §5-8 주인공 방문 — 2~3문단 장면 + 이미지 생성 + 사건 저장
+ * ================================================================== */
+function visitVerb(type){
+  if(type === 'space' || type === 'world') return '그 장소를 직접 방문해 둘러보는';
+  if(type === 'char' || type === 'group') return '그 대상과 만나 대화를 나누는';
+  if(type === 'item') return '그 사물을 획득하거나 가까이에서 관찰하는';
+  return '그 요소를 직접 체험하는';
+}
+
+function openVisitModal(node){
+  const tab = curTab();
+  const ov = openModal({
+    title:`🧭 주인공 방문 — ${escHtml(node.name)}`, wide:true,
+    body:`<div id="vImgWrap" hidden></div><div id="vScene"><div class="center"><div class="spin"></div>장면을 쓰는 중…</div></div>`,
+    footer:`<button class="btn" data-a="r">↻ 다시 추천</button>
+            <button class="btn" data-a="i">🖼 이미지 생성</button>
+            ${editMode ? '<button class="btn gold" data-a="s">📜 사건으로 저장</button>' : ''}
+            <button class="btn" data-a="c">닫기</button>`
+  });
+  const sceneEl = ov.querySelector('#vScene');
+  const imgWrap = ov.querySelector('#vImgWrap');
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  ov.querySelector('[data-a=r]').onclick = () => gen();
+  ov.querySelector('[data-a=i]').onclick = () => genImage();
+  const saveBtn = ov.querySelector('[data-a=s]');
+  if(saveBtn) saveBtn.onclick = () => saveAsEvent();
+
+  async function gen(){
+    sceneEl.innerHTML = `<div class="center"><div class="spin"></div>장면을 쓰는 중…</div>`;
+    imgWrap.hidden = true; imgWrap.innerHTML = '';
+    try{
+      const c = buildCtx(tab);
+      const linked = tab.edges.filter(e => !e._aiPreview && (e.from===node.id || e.to===node.id))
+        .map(e => {
+          const other = nodeById(tab, e.from===node.id ? e.to : e.from);
+          return other ? `${other.name}(${e.label || '관계'})` : null;
+        }).filter(Boolean);
+      const sys = worldSystem(tab) +
+        `\n\n[중요 제약] 장면에는 반드시 아래 "사용 가능한 이름" 목록에 있는 대상만 등장시켜야 한다. 목록에 없는 새 인물·장소·사물·집단·고유명사를 만들어내면 안 된다. 이름 없는 '주인공'만 예외다.\n사용 가능한 이름: ${c.names.join(', ') || '(없음)'}`;
+      const user =
+        `주인공이 "${node.name}" (${TL[node.type]}${node.desc ? ': ' + node.desc : ''})에 대해 ${visitVerb(node.type)} 장면을 한국어 2~3문단으로 서술하라.\n` +
+        (linked.length ? `연결된 요소를 자연스럽게 함께 등장시켜라: ${linked.join(', ')}\n` : '') +
+        `제약: 사용 가능한 이름 목록(${c.names.join(', ') || '없음'}) 외의 고유명사 금지. 문단은 빈 줄로 구분. 제목이나 부가 설명 없이 본문만.`;
+      const text = (await callClaude(sys, [{role:'user', content:user}], 1800)).trim();
+      lastVisit = {node, text};
+      sceneEl.innerHTML = text.split(/\n{2,}/).map(p => `<p>${escHtml(p.trim()).replace(/\n/g,'<br>')}</p>`).join('');
+    }catch(err){
+      sceneEl.innerHTML = `<div class="empty">${escHtml(err.message)}</div>`;
+    }
+  }
+
+  async function genImage(){
+    if(!lastVisit || lastVisit.node !== node){ toast('먼저 장면 생성을 기다려주세요', true); return; }
+    imgWrap.hidden = false;
+    imgWrap.innerHTML = `<div class="center"><div class="spin"></div>일러스트를 그리는 중…</div>`;
+    try{
+      const style = (tab.refImages || []).length
+        ? '첨부한 참고 이미지의 그림체와 색감을 따른다.'
+        : '다크 판타지 일러스트, 절제된 조명과 깊은 색감.';
+      const prompt = `${style}\n세계관 분위기: ${(tab.worldPrompt || '').slice(0,300) || '다크 판타지'}\n` +
+        `다음 장면을 한 장의 일러스트로: ${lastVisit.text.slice(0,600)}`;
+      const url = await callGemini(prompt, tab.refImages);
+      imgWrap.innerHTML = `<img src="${url}" alt="장면 일러스트">`;
+    }catch(err){
+      imgWrap.innerHTML = `<div class="empty">${escHtml(err.message)}</div>`;
+    }
+  }
+
+  function saveAsEvent(){
+    if(!reqEdit()) return;
+    if(!lastVisit || lastVisit.node !== node){ toast('먼저 장면 생성을 기다려주세요', true); return; }
+    tab.events.push({
+      id: gid(),
+      time: '기록되지 않은 시점',
+      body: `[${node.name} 방문] ` + lastVisit.text,
+      order: maxOrder(tab) + 10
+    });
+    commit();
+    if(rpCur === 'events') renderEvents();
+    toast('사건 연표에 저장했습니다');
+  }
+
+  gen();
+}
+/* ==================================================================
+ * §5-1 탭 관리
+ * ================================================================== */
+function renderTabs(){
+  tabsEl.innerHTML = '';
+  tabs.forEach(t => {
+    const el = document.createElement('div');
+    el.className = 'tab' + (t.id === activeTabId ? ' act' : '');
+    el.innerHTML =
+      `<span class="tt" title="${escHtml(t.title)}">${escHtml(t.title || '무제')}</span>` +
+      `<span class="tacts"><button class="ta" data-a="d" title="복제">⧉</button>` +
+      `<button class="ta td" data-a="x" title="삭제">✕</button></span>`;
+    const tt = el.querySelector('.tt');
+    tt.onclick = () => switchTab(t.id);
+    tt.ondblclick = () => { if(editMode) openRenameTab(t); };
+    el.querySelector('[data-a=d]').onclick = e => { e.stopPropagation(); duplicateTab(t); };
+    el.querySelector('[data-a=x]').onclick = e => { e.stopPropagation(); askDeleteTab(t); };
+    tabsEl.appendChild(el);
+  });
+}
+
+function switchTab(id){
+  if(id === activeTabId) return;
+  clearPreview();          // 떠나는 탭의 AI 미리보기 정리
+  exitLink(); closeCtx();
+  activeTabId = id;
+  sel = {nodeId:null, edgeId:null};
+  renderTabs(); renderAll(); zoomFit(); refreshOpenPanels();
+  if(fbReady) attachTab(id);
+  markDirty();
+}
+
+function addTab(){
+  if(!reqEdit()) return;
+  const t = makeDefaultTab();
+  tabs.push(t);
+  renderTabs();
+  switchTab(t.id);         // attachTab → 빈 스냅샷 → 새 탭 전체 push
+  toast('새 세계관을 만들었습니다');
+}
+
+/* §5-1 복제 — 전체 딥카피 + ID 재발급 + 엣지 리맵.
+ * ⚠ Firebase diff 스냅샷은 attachTab에서 항상 빈 상태로 시작하므로
+ *   복제 탭도 "변경 없음"으로 오판되지 않고 전량 기록된다. */
+function duplicateTab(src){
+  if(!reqEdit()) return;
+  const base = cleanTab(src);
+  const nt = sanitizeTab({
+    id: gid(), title: '복사_' + (src.title || '무제'),
+    nodes:[], edges:[], events:[],
+    worldPrompt: base.worldPrompt,
+    refImages: [...base.refImages]
+  });
+  const idMap = {};
+  base.nodes.forEach(n => {
+    const ni = gid(); idMap[n.id] = ni;
+    nt.nodes.push({...n, id:ni, _exp:false});
+  });
+  base.edges.forEach(e => {
+    const f = idMap[e.from], to = idMap[e.to];
+    if(!f || !to) return;
+    nt.edges.push({...e, id:gid(), from:f, to});
+  });
+  base.events.forEach(ev => nt.events.push({...ev, id:gid()}));
+  tabs.push(nt);
+  renderTabs();
+  switchTab(nt.id);
+  toast('탭을 복제했습니다');
+}
+
+function askDeleteTab(t){
+  if(!reqEdit()) return;
+  if(tabs.length <= 1){ toast('마지막 탭은 삭제할 수 없습니다', true); return; }
+  confirmModal({
+    title:'세계관 삭제', danger:true, ok:'삭제',
+    html:`"<b>${escHtml(t.title)}</b>" 탭을 삭제할까요?<br>` +
+         `<span style="color:var(--text3)">노드 ${t.nodes.length} · 관계 ${t.edges.length} · 사건 ${t.events.length}개가 함께 삭제됩니다.</span>`,
+    onOk:() => {
+      tabs = tabs.filter(x => x.id !== t.id);
+      if(fbReady && fbRoot) fbRoot.child('tabs/' + t.id).remove().catch(()=>{});
+      if(activeTabId === t.id){
+        activeTabId = tabs[0].id;
+        sel = {nodeId:null, edgeId:null};
+        if(fbReady) attachTab(activeTabId);
+        renderAll(); zoomFit(); refreshOpenPanels();
+      }
+      renderTabs(); commit();
+      toast('삭제했습니다');
+    }
+  });
+}
+
+function openRenameTab(t){
+  const ov = openModal({
+    title:'세계관 이름 변경',
+    body:`<div><label>이름</label><input id="rnName" maxlength="40" value="${escHtml(t.title || '')}"></div>`,
+    footer:`<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="s">저장</button>`
+  });
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  const save = () => {
+    const v = ov.querySelector('#rnName').value.trim();
+    if(!v){ toast('이름을 입력해주세요', true); return; }
+    t.title = v;
+    commit(); renderTabs(); closeModal(ov);
+  };
+  ov.querySelector('[data-a=s]').onclick = save;
+  ov.querySelector('#rnName').addEventListener('keydown', e => { if(e.key === 'Enter') save(); });
+}
+
+/* ==================================================================
+ * §5-11 편집 모드 / 보기 전용 — 마스터 코드는 서버(Worker)에서 검증, 토큰으로 유지
+ * ================================================================== */
+function setEditMode(on){
+  editMode = on;
+  updateModeUI();
+  renderAll();             // ⚠ 모드 전환 시 재렌더 → 드래그 핸들러 상태 반영
+  refreshOpenPanels();
+}
+function updateModeUI(){
+  document.body.classList.toggle('edit', editMode);
+  const b = $('#btnLock');
+  b.textContent = editMode ? '✏️ 편집 중' : '🔒 보기 전용';
+  b.classList.toggle('on', editMode);
+}
+
+async function toggleLock(){
+  if(editMode){ setEditMode(false); clearToken(); toast('보기 전용 모드로 전환했습니다'); return; }
+  if(!API_BASE){ toast('이 파일의 API_BASE(서버 주소)가 설정되지 않았습니다 — 관리자에게 문의', true); return; }
+  const ov = openModal({
+    title:'🔓 마스터 코드로 잠금 해제',
+    body:`<div class="infobox">편집 기능과 AI 기능이 열립니다. 코드는 서버에서만 검증되며 이 브라우저에 저장되지 않습니다.</div>
+          <div><label>마스터 코드</label><input id="ulCode" type="password" autocomplete="off"></div>`,
+    footer:`<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="k">해제</button>`
+  });
+  const input = ov.querySelector('#ulCode');
+  const btn = ov.querySelector('[data-a=k]');
+  const go = async () => {
+    if(!input.value){ input.focus(); return; }
+    btn.disabled = true;
+    try{
+      const tok = await apiAuth(input.value);
+      if(!tok){ toast('마스터 코드가 일치하지 않습니다', true); input.select(); return; }
+      closeModal(ov); setEditMode(true);
+      toast('잠금을 해제했습니다 — 편집 · AI 기능 사용 가능');
+    }catch(err){ toast(err.message, true); }
+    finally{ btn.disabled = false; }
+  };
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  btn.onclick = go;
+  input.addEventListener('keydown', e => { if(e.key === 'Enter') go(); });
+}
+
+/* ==================================================================
+ * 테마 — 다크(기본) / 라이트(베이지). localStorage wm_theme
+ * ================================================================== */
+let curTheme = 'dark';
+function applyTheme(name, persist = true){
+  curTheme = (name === 'light') ? 'light' : 'dark';
+  document.body.classList.toggle('light', curTheme === 'light');
+  if(persist){ try{ localStorage.setItem('wm_theme', curTheme); }catch(_){} }
+}
+
+/* 연결선 색 모드 — 'clean'(단색) / 'parent'(상위 노드 색). localStorage wm_edgecolor */
+function applyEdgeMode(name, persist = true){
+  edgeColorMode = (name === 'parent') ? 'parent' : 'clean';
+  if(persist){ try{ localStorage.setItem('wm_edgecolor', edgeColorMode); }catch(_){} }
+  if(edgeSvg) renderEdges();
+}
+
+/* 연결선 모양 — 'curve'(노드 회피 곡선, 기본) / 'line'(직선). localStorage wm_edgeshape */
+function applyEdgeShape(name, persist = true){
+  edgeShape = (name === 'line') ? 'line' : 'curve';
+  if(persist){ try{ localStorage.setItem('wm_edgeshape', edgeShape); }catch(_){} }
+  if(edgeSvg && curTab()) renderEdges();
+}
+
+/* ==================================================================
+ * §5-13 설정
+ * ================================================================== */
+function openSettings(){
+  const curFbRaw = localStorage.getItem('wm_fbcfg') || '';
+  const showFb = !FIREBASE_CONFIG;                       // 내장 설정이 없을 때만 수동 입력 허용
+  const prevTheme = curTheme, prevEdge = edgeColorMode, prevShape = edgeShape;
+  let themeCommitted = false;
+  const ov = openModal({
+    title:'⚙ 설정', wide:true,
+    onClose: () => { if(!themeCommitted){ applyTheme(prevTheme, false); applyEdgeMode(prevEdge, false); applyEdgeShape(prevShape, false); } }, // 취소 시 미리보기 되돌림
+    body:`
+      <div><label>테마</label>
+        <div class="theme-opts">
+          <label class="theme-opt"><input type="radio" name="stTheme" value="dark" ${curTheme==='dark'?'checked':''}>
+            <span class="sw dark">가</span>다크 — 검은 배경 · 흰 글씨</label>
+          <label class="theme-opt"><input type="radio" name="stTheme" value="light" ${curTheme==='light'?'checked':''}>
+            <span class="sw light">가</span>라이트 — 베이지 배경 · 검은 글씨</label>
+        </div></div>
+      <div><label>연결선 색</label>
+        <div class="theme-opts">
+          <label class="theme-opt"><input type="radio" name="stEdge" value="clean" ${edgeColorMode==='clean'?'checked':''}>
+            <span class="sw"><svg viewBox="0 0 18 18"><path d="M2 15 L16 3" stroke="#8b93c9" stroke-width="2.5" stroke-linecap="round"/></svg></span>깔끔 — 단색 선</label>
+          <label class="theme-opt"><input type="radio" name="stEdge" value="parent" ${edgeColorMode==='parent'?'checked':''}>
+            <span class="sw"><svg viewBox="0 0 18 18"><path d="M2 15 L9 9" stroke="#4a9edd" stroke-width="2.5" stroke-linecap="round"/><path d="M9 9 L16 3" stroke="#6bbd4a" stroke-width="2.5" stroke-linecap="round"/></svg></span>상위 노드 색 따라가기</label>
+        </div></div>
+      <div><label>연결선 모양</label>
+        <div class="theme-opts">
+          <label class="theme-opt"><input type="radio" name="stShape" value="curve" ${edgeShape==='curve'?'checked':''}>
+            <span class="sw"><svg viewBox="0 0 18 18"><path d="M2 15 Q4 4 16 3" fill="none" stroke="#8b93c9" stroke-width="2.5" stroke-linecap="round"/></svg></span>곡선 — 다른 노드를 완만하게 피해감</label>
+          <label class="theme-opt"><input type="radio" name="stShape" value="line" ${edgeShape==='line'?'checked':''}>
+            <span class="sw"><svg viewBox="0 0 18 18"><path d="M2 15 L16 3" stroke="#8b93c9" stroke-width="2.5" stroke-linecap="round"/></svg></span>직선</label>
+        </div></div>
+      ${showFb ? `<div><label>Firebase 설정 (이 파일에 내장된 설정이 없을 때만) — JSON · 객체 리터럴 · const firebaseConfig = {…}; 모두 인식</label>
+        <textarea id="stFb" rows="5" spellcheck="false" placeholder='{"apiKey":"...", "databaseURL":"https://...firebasedatabase.app", ...}'>${escHtml(curFbRaw)}</textarea></div>` : ''}
+      <div class="infobox">AI 모델: ${AI_MODEL} · 이미지: ${IMG_MODEL}<br>
+        API 키와 마스터 코드는 관리자의 서버(Cloudflare Worker)에서만 관리됩니다.
+        ${API_BASE ? '서버: ' + escHtml(API_BASE) : '<span style="color:var(--danger)">⚠ 이 파일에 API_BASE가 설정되지 않아 AI 기능을 쓸 수 없습니다.</span>'}
+      </div>`,
+    footer:`<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="s">저장</button>`
+  });
+  ov.querySelectorAll('[name=stTheme]').forEach(r => { r.onchange = () => applyTheme(r.value, false); });
+  ov.querySelectorAll('[name=stEdge]').forEach(r => { r.onchange = () => applyEdgeMode(r.value, false); });
+  ov.querySelectorAll('[name=stShape]').forEach(r => { r.onchange = () => applyEdgeShape(r.value, false); });
+  const commitTheme = () => {
+    const r = ov.querySelector('[name=stTheme]:checked');
+    applyTheme(r ? r.value : prevTheme, true);
+    const e = ov.querySelector('[name=stEdge]:checked');
+    applyEdgeMode(e ? e.value : prevEdge, true);
+    const sh = ov.querySelector('[name=stShape]:checked');
+    applyEdgeShape(sh ? sh.value : prevShape, true);
+    themeCommitted = true;
+  };
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  ov.querySelector('[data-a=s]').onclick = async () => {
+    const fbEl = ov.querySelector('#stFb');
+    if(fbEl){
+      const raw = fbEl.value.trim();
+      if(raw !== curFbRaw.trim()){
+        localStorage.setItem('wm_fbcfg', raw);
+        if(!raw){
+          teardownFB();
+        }else{
+          const cfg = parseFbConfig(raw);
+          if(!cfg){ toast('Firebase 설정 형식을 인식하지 못했습니다', true); return; }
+          if(typeof firebase === 'undefined'){ toast('Firebase SDK를 불러오지 못했습니다 (네트워크 확인)', true); return; }
+          commitTheme();
+          closeModal(ov);
+          await initFB(cfg, tabs.length > 0);
+          if(fbReady) attachTab(activeTabId);
+          toast('설정을 저장했습니다');
+          return;
+        }
+      }
+    }
+    commitTheme();
+    closeModal(ov);
+    toast('설정을 저장했습니다');
+  };
+}
+
+
+/* ==================================================================
+ * §5-12 로드 UI
+ * ================================================================== */
+function handleImportFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let d = null;
+    try{ d = JSON.parse(reader.result); }catch(_){}
+    const arr = d && Array.isArray(d.tabs) ? d.tabs : (Array.isArray(d) ? d : null);
+    if(!arr || !arr.length){ toast('worldmind-export.json 형식이 아닙니다', true); return; }
+    const nT = arr.length;
+    const nN = arr.reduce((s,t) => s + (t.nodes?.length || 0), 0);
+    const nE = arr.reduce((s,t) => s + (t.edges?.length || 0), 0);
+    const nV = arr.reduce((s,t) => s + (t.events?.length || 0), 0);
+    confirmModal({
+      title:'📂 데이터 로드', danger:true, ok:'모두 덮어쓰고 로드',
+      html:`<div class="infobox"><b>${escHtml(file.name)}</b><br>탭 ${nT}개 · 노드 ${nN}개 · 관계 ${nE}개 · 사건 ${nV}개</div>
+            <div class="warnbox">⚠ 현재의 모든 세계관 데이터를 이 파일의 내용으로 덮어씁니다.<br>Firebase에 연결된 경우 서버 데이터도 함께 교체됩니다.</div>`,
+      onOk:() => applyImport({tabs:arr})
+    });
+  };
+  reader.onerror = () => toast('파일을 읽지 못했습니다', true);
+  reader.readAsText(file);
+}
+
+/* ==================================================================
+ * 정적 UI 바인딩 + 초기화
+ * ================================================================== */
+function bindStaticUI(){
+  wrapEl = $('#cwrap');   worldEl = $('#world');   edgeSvg = $('#edgeSvg');
+  nodesEl = $('#nodes');  tabsEl = $('#tabs');     modalsEl = $('#modals');
+  toastsEl = $('#toasts');ctxEl = $('#ctxMenu');   rpEl = $('#rp');
+  rpTitleEl = $('#rpTitle');
+  bannerEl = $('#linkBanner');   genOverlayEl = $('#genOverlay');
+  aiPanelEl = $('#aiPanel');     aiPanelInfoEl = $('#aiPanelInfo');
+  syncDotEl = $('#syncDot');     syncTxtEl = $('#syncTxt');
+  chatLogEl = $('#chatLog');     evListEl = $('#evList');
+
+  bindCanvasEvents();
+
+  $('#tabAdd').onclick = addTab;
+  $('#btnAddNode').onclick = () => openNodeModal(null);
+  $('#btnAiGen').onclick = openAiGenModal;
+  $('#btnLayout').onclick = askAutoLayout;
+  $('#btnLock').onclick = toggleLock;
+  $('#btnWorld').onclick = () => openPanel('world');
+  $('#btnChat').onclick = () => openPanel('chat');
+  $('#btnEvents').onclick = () => openPanel('events');
+  $('#btnSettings').onclick = openSettings;
+  $('#btnExport').onclick = exportJson;
+  $('#btnImport').onclick = () => {
+    if(!editMode){ toast('로드는 모든 데이터를 덮어쓰므로 🔒 버튼으로 편집 모드에 들어간 뒤 사용할 수 있습니다', true); return; }
+    $('#fileImport').click();
+  };
+  $('#fileImport').addEventListener('change', e => {
+    handleImportFile(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('#rpClose').onclick = closePanel;
+  $('#wpSave').onclick = () => {
+    if(!reqEdit()) return;
+    const tab = curTab(); if(!tab) return;
+    tab.worldPrompt = $('#wpText').value;
+    commit();
+    toast('세계관 설정을 저장했습니다');
+  };
+  $('#refFile').addEventListener('change', e => {
+    handleRefFile(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('#chatSend').onclick = sendChat;
+  $('#chatText').addEventListener('keydown', e => {
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendChat(); }
+  });
+  $('#evAdd').onclick = () => openEventModal(null);
+  $('#evAi').onclick = aiGenEvent;
+  $('#linkCancel').onclick = exitLink;
+  $('#aiAccept').onclick = acceptPreview;
+  $('#aiRetry').onclick = () => {
+    if(!lastGenPrompt) return;
+    clearPreview(); renderAll();
+    runAiGen(lastGenPrompt);
+  };
+  $('#aiClose').onclick = () => { clearPreview(); renderAll(); };
+  $('#zIn').onclick = () => { const r = wrapEl.getBoundingClientRect(); zoomAt(r.width/2, r.height/2, 1.25); };
+  $('#zOut').onclick = () => { const r = wrapEl.getBoundingClientRect(); zoomAt(r.width/2, r.height/2, 1/1.25); };
+  $('#zFit').onclick = zoomFit;
+
+  document.addEventListener('pointerdown', e => {
+    if(!ctxEl.hidden && !ctxEl.contains(e.target)) closeCtx();
+  });
+  document.addEventListener('keydown', e => {
+    if(e.key !== 'Escape') return;
+    if(!ctxEl.hidden){ closeCtx(); return; }
+    if(linkMode.active){ exitLink(); return; }   // §9 ESC → 관계 추가 취소
+    const tm = topModal();
+    if(tm){ closeModal(tm); return; }
+    if(sel.edgeId || sel.nodeId){ sel = {nodeId:null, edgeId:null}; renderAll(); }
+  });
+}
+
+async function main(){
+  bindStaticUI();
+  applyTheme(localStorage.getItem('wm_theme') || 'dark', false);
+  edgeColorMode = (localStorage.getItem('wm_edgecolor') === 'parent') ? 'parent' : 'clean';
+  edgeShape = (localStorage.getItem('wm_edgeshape') === 'line') ? 'line' : 'curve';
+  setStatus('off','오프라인');
+  loadLocal();
+  const hadLocal = tabs.length > 0;
+
+  /* Firebase: 파일에 내장된 설정 우선, 없으면 이 브라우저에 저장된 설정(개발/개인용) */
+  let cfg = FIREBASE_CONFIG || null;
+  if(!cfg){ try{ cfg = parseFbConfig(localStorage.getItem('wm_fbcfg')); }catch(_){} }
+  if(cfg){
+    if(typeof firebase !== 'undefined') await initFB(cfg, hadLocal);
+    else setStatus('err','연결 오류');
+  }
+
+  if(!tabs.length) tabs = [makeDefaultTab()];
+  if(!tabs.find(t => t.id === activeTabId)) activeTabId = tabs[0].id;
+  ensureIdCounter();
+  if(getToken()) editMode = true;          // 같은 세션(탭) 안에서는 새로고침해도 잠금 해제 유지
+  updateModeUI();
+  renderTabs(); renderAll(); zoomFit();
+  if(fbReady) attachTab(activeTabId);
+
+  /* §8-4: 자동 저장은 localStorage만 주기 실행. Firebase는 commit() 시 즉시 diff */
+  setInterval(() => { if(dirtyLocal){ dirtyLocal = false; saveLocal(); } }, 1200);
+  window.addEventListener('beforeunload', () => { if(dirtyLocal) saveLocal(); });
+}
+
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', main);
+else main();
+</script>
+</body>
+</html>

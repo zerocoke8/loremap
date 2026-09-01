@@ -1,0 +1,15 @@
+{
+  "name": "worldmind",
+  "private": true,
+  "description": "WorldMind — AI 기반 창작 세계관 마인드맵 (GitHub Pages 정적 앱 + Cloudflare Worker API 프록시)",
+  "scripts": {
+    "test": "node tests/run-all.js",
+    "test:worker": "node tests/worker.test.mjs",
+    "test:app": "node tests/dom.test.js && node tests/fb.test.js && node tests/proxy.test.js",
+    "check": "node -e \"const s=require('fs').readFileSync('index.html','utf8');const m=s.match(/\\n<script>\\n([\\s\\S]*?)\\n<\\/script>/);require('fs').writeFileSync('.app-check.js',m[1]);\" && node --check .app-check.js && rm .app-check.js && echo 'index.html 스크립트 문법 OK'",
+    "deploy:worker": "cd worker && npx wrangler deploy"
+  },
+  "devDependencies": {
+    "jsdom": "^26.0.0"
+  }
+}
