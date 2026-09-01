@@ -25,6 +25,7 @@
 | `ANTHROPIC_API_KEY` | **Secret** | Anthropic 콘솔에서 발급한 키 (`sk-ant-…`) |
 | `MASTER_CODE` | **Secret** | 사용자들에게 알려줄 마스터 코드. 길고 예측 어려운 문장 권장 |
 | `GOOGLE_API_KEY` | **Secret** | (선택) 이미지 생성을 쓸 때만. 없으면 이미지 버튼에서 안내가 뜹니다 |
+| `ANTHROPIC_WORKSPACE_ID` | Text | (선택) Anthropic 키가 **여러 워크스페이스용**(개인 키·서비스 계정 키)일 때만. 콘솔 Settings → Workspaces 의 ID 열에 있는 `wrkspc_…` 값. 키를 만들 때 워크스페이스를 하나만 지정했다면 필요 없음 |
 | `ALLOWED_ORIGINS` | Text | GitHub Pages 주소. 예: `https://myname.github.io` |
 
    `ALLOWED_ORIGINS` 메모
@@ -88,6 +89,7 @@ npx wrangler deploy
 | "origin not allowed: https://…" | `ALLOWED_ORIGINS` 와 실제 사이트 주소가 다름. 도메인까지만(`https://myname.github.io`), 끝에 `/`나 경로 없이, https 철자 확인 |
 | 코드가 맞는데 "일치하지 않습니다" | `MASTER_CODE` 앞뒤 공백, 또는 변수 저장 후 Deploy 를 안 누름 |
 | AI 호출 시 "MASTER_CODE 비밀 변수가…" / "ANTHROPIC_API_KEY…" | 해당 Secret 미등록 |
+| AI 호출 시 "anthropic-workspace-id is required…" 또는 "여러 워크스페이스용 키…" | 키가 다중 워크스페이스용. `ANTHROPIC_WORKSPACE_ID` 변수에 `wrkspc_…` 를 넣거나, 워크스페이스를 하나만 지정한 키로 교체 |
 | 상태 칩이 계속 "연결 중…" | `FIREBASE_CONFIG` 의 `databaseURL` 확인, Firebase 규칙이 읽기/쓰기를 허용하는지 확인 |
 
 ## 개발 (Claude Code 등으로 이어서 작업할 때)

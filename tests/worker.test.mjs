@@ -69,6 +69,17 @@ const sent = JSON.parse(lastUpstream.init.body);
 T('Anthropic 업스트림 호출 + 응답 전달', r.status === 200 && cj.content[0].text === '응답' && lastUpstream.url.includes('api.anthropic.com'));
 T('서버 키 사용 (클라이언트 키 불필요)', lastUpstream.init.headers['x-api-key'] === 'sk-ant-TEST' && lastUpstream.init.headers['anthropic-version'] === '2023-06-01');
 T('필드 화이트리스트·max_tokens 상한', sent.max_tokens === 8192 && sent.system === 'sys' && !('stream' in sent) && !('extra' in sent));
+T('워크스페이스 ID 미설정 시 헤더 없음', !('anthropic-workspace-id' in lastUpstream.init.headers));
+r = await call('/api/claude', {headers:H, body:{model:'claude-opus-4-6', messages:[]}}, {...env, ANTHROPIC_WORKSPACE_ID:' wrkspc_01ABC '});
+T('ANTHROPIC_WORKSPACE_ID 설정 시 헤더 전달(공백 제거)', lastUpstream.init.headers['anthropic-workspace-id'] === 'wrkspc_01ABC');
+{
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({type:'error', error:{type:'invalid_request_error', message:'anthropic-workspace-id is required when authenticating with an identity-linked API key; send the id of the workspace this request acts in.'}}), {status:400});
+  r = await call('/api/claude', {headers:H, body:{model:'claude-opus-4-6', messages:[]}});
+  const j = await r.json();
+  T('다중 워크스페이스 키 오류 → 한국어 안내로 변환', r.status === 400 && j.error.message.includes('ANTHROPIC_WORKSPACE_ID'));
+  globalThis.fetch = saved;
+}
 r = await call('/api/claude', {headers:H, body:{model:'gpt-x', messages:[]}});
 T('모델 ID 검증', r.status === 400);
 r = await call('/api/claude', {headers:H, body:{model:'claude-opus-4-6'}});

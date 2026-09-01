@@ -50,7 +50,7 @@ const T = (name, cond, extra) => {
   /* ---- 노드 클릭 → 펼침 + 선택 ---- */
   doc.querySelectorAll('.node')[0].dispatchEvent(new win.MouseEvent('click', {bubbles:true}));
   await new Promise(r => setTimeout(r, 40));
-  T('클릭 → 펼침+선택', E("tabs[0].nodes[0]._exp===true && sel.nodeId==='i1001'"));
+  T('클릭 → 펼침+선택', E("tabs[0].nodes[0]._exp===true && sel.nodeIds.includes('i1001')"));
   T('펼침 클래스 반영', doc.querySelector('.node.exp.sel') !== null);
 
   /* ---- _justDragged 클릭 억제 (§5-2 ⚠) ---- */

@@ -241,8 +241,26 @@ body.edit div.eo,body.edit span.eo{display:flex}
   padding:9px 16px;font-size:13px;color:var(--accent2);box-shadow:var(--shadow);
   backdrop-filter:blur(6px);white-space:nowrap;
 }
-#linkBanner button{font-size:12px;color:var(--text3);border:1px solid var(--border);border-radius:14px;padding:3px 10px}
-#linkBanner button:hover{color:var(--text);border-color:var(--border2)}
+#linkBanner button,#pickBanner button{font-size:12px;color:var(--text3);border:1px solid var(--border);border-radius:14px;padding:3px 10px}
+#linkBanner button:hover,#pickBanner button:hover{color:var(--text);border-color:var(--border2)}
+#pickBanner{
+  position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:20;
+  display:flex;align-items:center;gap:9px;
+  background:var(--glass);border:1px solid var(--gold);border-radius:24px;
+  padding:9px 16px;font-size:13px;color:var(--gold2);box-shadow:var(--shadow);
+  backdrop-filter:blur(6px);white-space:nowrap;
+}
+#pickBanner b{font-variant-numeric:tabular-nums}
+#pickBanner button.go{color:var(--gold2);border-color:var(--gold)}
+#pickBanner button.go:hover{background:rgba(212,169,71,.14)}
+#pickBanner button:disabled{opacity:.45;cursor:not-allowed}
+#marquee{
+  position:absolute;z-index:16;pointer-events:none;border-radius:4px;
+  border:1.5px dashed var(--accent2);background:rgba(124,106,247,.10);
+}
+.guide{position:absolute;pointer-events:none;z-index:6}
+.gv{top:0;height:4000px;width:0;border-left:1.5px dashed var(--gold)}
+.gh{left:0;width:4000px;height:0;border-top:1.5px dashed var(--gold)}
 #genOverlay{
   position:absolute;inset:0;z-index:22;display:flex;flex-direction:column;gap:16px;
   align-items:center;justify-content:center;background:var(--ov-bg);
@@ -456,6 +474,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
   <button class="tb eo" id="btnAddNode">＋ 노드</button>
   <button class="tb eo gold" id="btnAiGen">✨ AI 노드</button>
   <button class="tb eo" id="btnLayout">🔀 정렬</button>
+  <button class="tb eo" id="btnUndo" title="실행 취소 (Ctrl+Z) / 다시 실행 (Ctrl+Shift+Z)">↩ 되돌리기</button>
   <span id="syncChip"><i class="dot off" id="syncDot"></i><span id="syncTxt">오프라인</span></span>
   <span class="sp"></span>
   <button class="tb" id="btnLock">🔒 보기 전용</button>
@@ -473,8 +492,13 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
     <div id="world">
       <svg id="edgeSvg" xmlns="http://www.w3.org/2000/svg"></svg>
       <div id="nodes"></div>
+      <div class="guide gv" id="guideV" hidden></div>
+      <div class="guide gh" id="guideH" hidden></div>
     </div>
     <div id="linkBanner" hidden>🔗 관계를 연결할 대상 노드를 클릭하세요 <button id="linkCancel">ESC 취소</button></div>
+    <div id="pickBanner" hidden>📜 사건에 등장할 노드를 클릭·드래그로 선택하세요 — <b id="pickCount">0</b>개
+      <button id="pickGo" class="go">✨ 생성</button><button id="pickCancel">ESC 취소</button></div>
+    <div id="marquee" hidden></div>
     <div id="genOverlay" hidden><div class="spin"></div><div>AI가 노드를 생성하는 중…</div></div>
     <div id="aiPanel" hidden>
       <div class="ai-h">✨ AI 생성 미리보기</div>
@@ -554,14 +578,14 @@ const IMG_MODEL = 'gemini-3.1-flash-image-preview';
 
 /* ==================================================================
  * ★ 배포 설정 — 관리자가 이 두 값만 채웁니다 (README.md 참고)
- *   API_BASE        : https://worldmind-api.korspen.workers.dev
+ *   API_BASE        : Cloudflare Worker 주소. 끝에 슬래시 없이.
  *                     예) 'https://worldmind-api.myname.workers.dev'
- *   FIREBASE_CONFIG : { apiKey: "AIzaSyDNZOAhJ4fNPSQ836T1MTHxE90wbGQn1l4", authDomain: "worldmind-f1241.firebaseapp.com", databaseURL: "https://worldmind-f1241-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "worldmind-f1241", storageBucket: "worldmind-f1241.firebasestorage.app", messagingSenderId: "1071479623712", appId: "1:1071479623712:web:d358306d33cd98d38a6c45",measurementId: "G-DFHS17GTTE" }
+ *   FIREBASE_CONFIG : Firebase 콘솔의 웹 앱 설정 객체 (비밀 아님, 내장 OK)
  *                     예) { apiKey:'…', authDomain:'…', databaseURL:'https://….firebasedatabase.app', projectId:'…' }
  *   API 키와 마스터 코드는 Worker의 비밀 변수에만 존재합니다. 이 파일에는 넣지 마세요.
  * ================================================================== */
-const API_BASE = 'https://worldmind-api.korspen.workers.dev';
-const FIREBASE_CONFIG = { apiKey: "AIzaSyDNZOAhJ4fNPSQ836T1MTHxE90wbGQn1l4", authDomain: "worldmind-f1241.firebaseapp.com", databaseURL: "https://worldmind-f1241-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "worldmind-f1241", storageBucket: "worldmind-f1241.firebasestorage.app", messagingSenderId: "1071479623712", appId: "1:1071479623712:web:d358306d33cd98d38a6c45",measurementId: "G-DFHS17GTTE" };
+const API_BASE = '';
+const FIREBASE_CONFIG = null;
 
 /* §2-2 세션 ID (자기 쓰기 에코 무시용) */
 const FB_SID = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
@@ -574,7 +598,12 @@ let activeTabId = null;
 let editMode = false;
 let dirtyLocal = false;
 let lsLoadFailed = false;          // 로컬 데이터 파싱 실패 시 덮어쓰기 방지
-let sel = {nodeId:null, edgeId:null};
+let sel = {nodeIds:[], edgeId:null};   // 다중 선택
+const isSel = id => sel.nodeIds.includes(id);
+function clearSel(){ sel = {nodeIds:[], edgeId:null}; }
+let evPick = {active:false, busy:false}; // AI 사건 생성 — 노드 선택 모드
+let spaceHeld = false;                   // Space+드래그 = 팬(편집 모드)
+let geomFast = false;                    // 드래그/트윈 중 곡선 k 캐시 사용
 let view = {z:0.8, px:0, py:0};
 let linkMode = {active:false, from:null};
 let _justDragged = false;          // §5-2 드래그/롱프레스 직후 클릭 억제
@@ -585,6 +614,22 @@ let rpCur = null;                  // 열린 우측 패널
 let edgeColorMode = 'clean';       // 연결선 색: 'clean' | 'parent' (wm_edgecolor)
 let edgeShape = 'curve';           // 연결선 모양: 'curve' | 'line' (wm_edgeshape)
 let lastGenPrompt = '';
+/* 되돌리기 — commit 시점마다 직전 상태를 적재 (refImages 문자열은 참조 공유로 가볍게) */
+let undoStack = [], redoStack = [], lastState = null;
+const UNDO_MAX = 30;
+function snapState(){ return {activeTabId, tabs: tabs.map(cleanTab)}; }
+function snapKey(st){
+  return st.activeTabId + '|' + JSON.stringify(st.tabs, (k,v) => k === 'refImages' ? v.length : v);
+}
+function recordUndo(){
+  const cur = snapState();
+  if(lastState && snapKey(lastState) !== snapKey(cur)){
+    undoStack.push(lastState);
+    if(undoStack.length > UNDO_MAX) undoStack.shift();
+    redoStack = [];
+  }
+  lastState = cur;
+}
 let lastVisit = null;
 
 const curTab = () => tabs.find(t => t.id === activeTabId);
@@ -593,7 +638,8 @@ const nodeById = (tab,id) => tab.nodes.find(n => n.id === id);
 /* 엘리먼트 참조 (bindStaticUI에서 할당) */
 let wrapEl, worldEl, edgeSvg, nodesEl, tabsEl, modalsEl, toastsEl, ctxEl,
     rpEl, rpTitleEl, bannerEl, genOverlayEl, aiPanelEl, aiPanelInfoEl,
-    syncDotEl, syncTxtEl, chatLogEl, evListEl;
+    syncDotEl, syncTxtEl, chatLogEl, evListEl,
+    pickBannerEl, marqueeEl, guideV, guideH;
 
 /* ==================================================================
  * 범용 유틸
@@ -960,6 +1006,7 @@ function saveLocal(){
 /* 변경 커밋: 로컬은 주기 저장(§8-4), Firebase는 즉시 diff 전송 */
 function commit(){
   markDirty();
+  recordUndo();
   fbSyncActive();
 }
 
@@ -989,8 +1036,9 @@ async function applyImport(parsed){
   if(!tabs.length) tabs = [makeDefaultTab()];
   activeTabId = tabs[0].id;
   ensureIdCounter();
-  sel = {nodeId:null, edgeId:null};
+  clearSel();
   lsLoadFailed = false;
+  recordUndo();                 // 로드 전 상태를 되돌리기 스택에 보존
   markDirty(); saveLocal();
   renderTabs(); renderAll(); zoomFit(); refreshOpenPanels();
   if(fbReady){
@@ -1183,7 +1231,7 @@ function applyRemoteTabList(list){
   tabs = next;
   if(!tabs.find(t => t.id === activeTabId)){
     activeTabId = tabs[0]?.id ?? null;
-    sel = {nodeId:null, edgeId:null};
+    clearSel();
     if(activeTabId && fbReady) attachTab(activeTabId);
     zoomFitSoon();
   }
@@ -1208,7 +1256,7 @@ function detachTab(){
   curAttachId = null;
 }
 
-async function attachTab(tabId){
+async function attachTab(tabId, applyServer = true){
   if(!fbReady || !fbRoot) return;
   detachTab();
   const tab = tabs.find(t => t.id === tabId);
@@ -1222,7 +1270,7 @@ async function attachTab(tabId){
     const s = await tref.once('value');
     if(curAttachId !== tabId) return;
     const v = s.val();
-    if(v) adoptServerTab(tab, v);
+    if(v) adoptServerTab(tab, v, applyServer);   // 되돌리기 직후엔 스냅샷만 채우고 로컬을 덮지 않음
   }catch(err){ console.warn('탭 데이터 읽기 실패', err); }
   if(curAttachId !== tabId) return;
 
@@ -1253,12 +1301,14 @@ async function attachTab(tabId){
   queueRemoteRender();
 }
 
-function adoptServerTab(tab, v){
+function adoptServerTab(tab, v, applyLocal = true){
   if(v.meta){
     const {_w, ...m} = v.meta;
-    tab.title = m.title ?? tab.title;
-    tab.worldPrompt = m.worldPrompt ?? tab.worldPrompt ?? '';
-    fbSnap.meta = JSON.stringify({title:tab.title??'무제', worldPrompt:tab.worldPrompt??''});
+    if(applyLocal){
+      tab.title = m.title ?? tab.title;
+      tab.worldPrompt = m.worldPrompt ?? tab.worldPrompt ?? '';
+    }
+    fbSnap.meta = JSON.stringify({title:m.title??'무제', worldPrompt:m.worldPrompt??''});
   }
   ['nodes','edges','events'].forEach(kind => {
     const src = v[kind] || {};
@@ -1266,6 +1316,7 @@ function adoptServerTab(tab, v){
       const {_w, ...data} = (val||{});
       const norm = normFB(kind, data);
       fbSnap[kind][id] = JSON.stringify(norm);
+      if(!applyLocal) return;
       const arr = tab[kind];
       const ex = arr.find(x => x.id === id);
       if(ex) Object.assign(ex, norm);
@@ -1291,7 +1342,7 @@ function handleRemoteItem(tabId, kind, mode, id, val){
         if(gone) delete fbSnap.edges[e.id];
         return !gone;
       });
-      if(sel.nodeId === id) sel.nodeId = null;
+      sel.nodeIds = sel.nodeIds.filter(x => x !== id);
     }
     if(kind === 'edges' && sel.edgeId === id) sel.edgeId = null;
     markDirty(); queueRemoteRender();
@@ -1467,7 +1518,7 @@ function renderNodes(){
     const el = document.createElement('div');
     el.className = 'node t-' + type
       + (n._exp ? ' exp' : '')
-      + (sel.nodeId === n.id ? ' sel' : '')
+      + (isSel(n.id) ? ' sel' : '')
       + (n._aiPreview ? ' preview' : '');
     el.style.left = (n.x||0) + 'px';
     el.style.top  = (n.y||0) + 'px';
@@ -1478,7 +1529,7 @@ function renderNodes(){
       `<div class="nd">${escHtml(n.desc || '설명이 없습니다.').replace(/\n/g,'<br>')}</div>`;
     wireNode(el, n);
     nodesEl.appendChild(el);
-    nodeSizes[n.id] = {w:el.offsetWidth, h:el.offsetHeight};
+    nodeSizes[n.id] = {w:el.offsetWidth || 200, h:el.offsetHeight || 70};  // 레이아웃 전/숨김 상태 방어
   });
 }
 
@@ -1635,17 +1686,72 @@ function chooseCurve(A, B, ed, obs){
   return best;
 }
 
-function setEdgeGeom(refs, A, B, obs){
-  const k = (edgeShape === 'curve') ? chooseCurve(A, B, refs.ed, obs || buildObstacles()) : 0;
-  const g = edgePath(A, B, k);
-  refs.line.setAttribute('d', g.d);
-  refs.hit.setAttribute('d', g.d);
-  if(refs.lbl){
-    refs.lbl.setAttribute('transform', `translate(${g.mx},${g.my})`);
+/* ---- 노드 테두리 절단: 선이 카드 뒤로 비치지 않도록 곡선을 잘라낸다 ---- */
+function quadPoint(A, P, B, t){
+  const u = 1 - t;
+  return {x: u*u*A.x + 2*t*u*P.x + t*t*B.x, y: u*u*A.y + 2*t*u*P.y + t*t*B.y};
+}
+function rectFor(id){
+  const tab = curTab();
+  const n = tab && nodeById(tab, id);
+  if(!n) return {x1:0, y1:0, x2:0, y2:0};
+  const s = nodeSizes[id] || {w:200, h:70};
+  return {x1:n.x - 2, y1:n.y - 2, x2:n.x + s.w + 2, y2:n.y + s.h + 2};
+}
+const inRect = (p, r) => p.x > r.x1 && p.x < r.x2 && p.y > r.y1 && p.y < r.y2;
+
+/* 2차 베지어에서 노드 사각형 밖 구간 [t0,t1]만 남긴다 — 경계는 이분 탐색으로 정밀화 */
+function trimQuad(A, P, B, rA, rB){
+  const C = t => quadPoint(A, P, B, t);
+  const N = 24, step = 1/N;
+  let t0 = 0, t1 = 1;
+  if(inRect(C(0), rA)){
+    let lo = 0, hi = 1;
+    for(let i = 1; i <= N; i++){
+      const t = i*step;
+      if(!inRect(C(t), rA)){ hi = t; lo = t - step; break; }
+      if(i === N){ lo = hi = 1; }
+    }
+    for(let i = 0; i < 12; i++){ const m = (lo + hi)/2; if(inRect(C(m), rA)) lo = m; else hi = m; }
+    t0 = hi;
   }
+  if(inRect(C(1), rB)){
+    let lo = 1, hi = 0;
+    for(let i = 1; i <= N; i++){
+      const t = 1 - i*step;
+      if(!inRect(C(t), rB)){ hi = t; lo = t + step; break; }
+      if(i === N){ lo = hi = 0; }
+    }
+    for(let i = 0; i < 12; i++){ const m = (lo + hi)/2; if(inRect(C(m), rB)) lo = m; else hi = m; }
+    t1 = hi;
+  }
+  if(t1 - t0 < 0.02) return null;                 // 카드가 겹치면 선 숨김
+  const D0 = C(t0), D2 = C(t1);
+  const dx = (1 - t0)*(P.x - A.x) + t0*(B.x - P.x);
+  const dy = (1 - t0)*(P.y - A.y) + t0*(B.y - P.y);
+  return {D0, D1:{x:D0.x + (t1 - t0)*dx, y:D0.y + (t1 - t0)*dy}, D2};
+}
+
+function setEdgeGeom(refs, A, B, obs){
+  let k = 0;
+  if(edgeShape === 'curve'){
+    k = (geomFast && refs._k != null)
+      ? refs._k                                   // 드래그/트윈 중엔 굴곡값 캐시로 프레임 유지
+      : (refs._k = chooseCurve(A, B, refs.ed, obs || buildObstacles()));
+  }
+  const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1;
+  const P = {x:(A.x + B.x)/2 - dy/L*k, y:(A.y + B.y)/2 + dx/L*k};
+  const seg = trimQuad(A, P, B, rectFor(refs.ed.from), rectFor(refs.ed.to));
+  const d = seg
+    ? `M ${seg.D0.x} ${seg.D0.y} Q ${seg.D1.x} ${seg.D1.y} ${seg.D2.x} ${seg.D2.y}`
+    : 'M -10 -10 L -10 -10';
+  refs.line.setAttribute('d', d);
+  refs.hit.setAttribute('d', d);
+  const mid = quadPoint(A, P, B, 0.5);
+  if(refs.lbl) refs.lbl.setAttribute('transform', `translate(${mid.x},${mid.y})`);
   if(refs.detail){
-    refs.detail.style.left = g.mx + 'px';
-    refs.detail.style.top  = g.my + 'px';
+    refs.detail.style.left = mid.x + 'px';
+    refs.detail.style.top  = mid.y + 'px';
   }
 }
 
@@ -1675,10 +1781,23 @@ function wireNode(el, n){
     e.stopPropagation();
     if(_justDragged){ _justDragged = false; return; }   // ⚠ 드래그 후 펼침 방지
     if(linkMode.active){ finishLink(n.id); return; }
-    sel = {nodeId:n.id, edgeId:null};
+    if(evPick.active){ togglePick(n.id); return; }      // 사건 생성 — 노드 선택 모드
+    if(e.ctrlKey || e.metaKey || e.shiftKey){           // 다중 선택 토글
+      sel.edgeId = null;
+      sel.nodeIds = isSel(n.id) ? sel.nodeIds.filter(x => x !== n.id) : [...sel.nodeIds, n.id];
+      renderAll();
+      return;
+    }
+    sel = {nodeIds:[n.id], edgeId:null};
     n._exp = !n._exp;
     renderAll();
   });
+  /* 펼친 설명이 스크롤 가능하면 휠은 내용 스크롤 (캔버스 줌 방지) */
+  el.addEventListener('wheel', e => {
+    if(!n._exp) return;
+    const d = el.querySelector('.nd');
+    if(d && d.scrollHeight > d.clientHeight) e.stopPropagation();
+  }, {passive:true});
   el.addEventListener('contextmenu', e => {
     e.preventDefault(); e.stopPropagation();
     openNodeMenu(n, e.clientX, e.clientY);
@@ -1687,8 +1806,9 @@ function wireNode(el, n){
     if(e.button === 2) return;
     e.stopPropagation();
     closeCtx();
-    const sx = e.clientX, sy = e.clientY, ox = n.x, oy = n.y;
+    const sx = e.clientX, sy = e.clientY;
     let dragging = false, longFired = false;
+    let group = [], origins = {};
 
     /* 롱프레스 0.5s — 태블릿 메뉴 (§5-2) */
     const lp = setTimeout(() => {
@@ -1705,15 +1825,39 @@ function wireNode(el, n){
       if(Math.hypot(dx, dy) > 10) clearTimeout(lp);   // 10px 이동 → 롱프레스 취소
       if(!dragging && editMode && Math.hypot(dx, dy) > 3){
         dragging = true;
-        el.classList.add('drag');
         clearTimeout(lp);
+        /* 선택된 묶음째 이동. 선택 밖 노드를 끌면 그 노드만 선택 */
+        if(!isSel(n.id)) sel = {nodeIds:[n.id], edgeId:null};
+        else sel.edgeId = null;
+        group = sel.nodeIds.slice();
+        const tab = curTab();
+        group.forEach(id => {
+          const nd = nodeById(tab, id);
+          if(nd) origins[id] = {x:nd.x, y:nd.y};
+          const gx = nodesEl.querySelector(`[data-id="${id}"]`);
+          if(gx) gx.classList.add('drag', 'sel');
+        });
+        geomFast = true;                      // 드래그 중 곡선 굴곡값 캐시
       }
       if(dragging){
-        n.x = ox + dx / view.z;
-        n.y = oy + dy / view.z;
-        el.style.left = n.x + 'px';
-        el.style.top  = n.y + 'px';
-        updateEdgesFor(n.id);
+        let wx = dx / view.z, wy = dy / view.z;
+        hideGuides();
+        if(ev.shiftKey){                      // Shift: 이웃 노드 중심선에 스냅 + 가이드
+          const base = origins[n.id] || {x:n.x, y:n.y};
+          const sn = computeSnap(n, base.x + wx, base.y + wy, group);
+          wx += sn.dx; wy += sn.dy;
+        }
+        const tab = curTab();
+        group.forEach(id => {
+          const nd = nodeById(tab, id);
+          const o = origins[id];
+          if(!nd || !o) return;
+          nd.x = o.x + wx; nd.y = o.y + wy;
+          const gx = nodesEl.querySelector(`[data-id="${id}"]`);
+          if(gx){ gx.style.left = nd.x + 'px'; gx.style.top = nd.y + 'px'; }
+        });
+        if(group.length === 1) updateEdgesFor(n.id);
+        else updateAllEdgeGeom();
       }
     };
     function endMove(){
@@ -1721,10 +1865,17 @@ function wireNode(el, n){
       window.removeEventListener('pointermove', mv);
       window.removeEventListener('pointerup', endMove);
       window.removeEventListener('pointercancel', endMove);
+      geomFast = false;
+      hideGuides();
+      group.forEach(id => nodesEl.querySelector(`[data-id="${id}"]`)?.classList.remove('drag'));
       el.classList.remove('drag');
       if(dragging && !longFired){
         _justDragged = true;
-        n.x = Math.round(n.x); n.y = Math.round(n.y);
+        const tab = curTab();
+        group.forEach(id => {
+          const nd = nodeById(tab, id);
+          if(nd){ nd.x = Math.round(nd.x); nd.y = Math.round(nd.y); }
+        });
         commit();
         renderEdges();
       }
@@ -1736,11 +1887,37 @@ function wireNode(el, n){
     /* §8-1: 재렌더 시 남은 리스너 강제 정리 */
     cleanupFns.push(() => {
       clearTimeout(lp);
+      geomFast = false;
+      hideGuides();
       window.removeEventListener('pointermove', mv);
       window.removeEventListener('pointerup', endMove);
       window.removeEventListener('pointercancel', endMove);
     });
   });
+}
+
+/* Shift 드래그 정렬 스냅 — 근처 노드 중심선(x/y)에 흡착, 가이드선 표시 */
+function computeSnap(n, px, py, group){
+  const tab = curTab();
+  const s = nodeSizes[n.id] || {w:200, h:70};
+  const cx = px + s.w/2, cy = py + s.h/2;
+  const th = Math.min(30, Math.max(4, 9 / view.z));
+  const out = {dx:0, dy:0};
+  let bx = th, by = th, gx = null, gy = null;
+  tab.nodes.forEach(o => {
+    if(group.includes(o.id) || o._aiPreview) return;
+    const os = nodeSizes[o.id] || {w:200, h:70};
+    const ox = o.x + os.w/2, oy = o.y + os.h/2;
+    if(Math.abs(ox - cx) < bx){ bx = Math.abs(ox - cx); out.dx = ox - cx; gx = ox; }
+    if(Math.abs(oy - cy) < by){ by = Math.abs(oy - cy); out.dy = oy - cy; gy = oy; }
+  });
+  if(gx != null){ guideV.style.left = gx + 'px'; guideV.hidden = false; }
+  if(gy != null){ guideH.style.top = gy + 'px'; guideH.hidden = false; }
+  return out;
+}
+function hideGuides(){
+  if(guideV) guideV.hidden = true;
+  if(guideH) guideH.hidden = true;
 }
 
 /* 엣지 클릭/우클릭/롱프레스 (§5-3) — 클릭 시 상세 카드 토글 */
@@ -1878,7 +2055,7 @@ function openNodeModal(node, presetPos){
                   x:Math.round(c.x - 100 + (Math.random()*60-30)),
                   y:Math.round(c.y - 35  + (Math.random()*60-30)), _exp:false};
       t.nodes.push(nn);
-      sel = {nodeId:nn.id, edgeId:null};
+      sel = {nodeIds:[nn.id], edgeId:null};
     }else{
       Object.assign(node, {type, name, desc});
     }
@@ -1914,7 +2091,7 @@ function openEdgeModal(edge, pre){
     if(isNew){
       const ne = {id:gid(), from, to, label, desc, isParent};
       t.edges.push(ne);
-      sel = {nodeId:null, edgeId:ne.id};
+      sel = {nodeIds:[], edgeId:ne.id};
     }else{
       Object.assign(edge, {label, desc, isParent});
     }
@@ -1972,7 +2149,7 @@ function doDeleteNodes(ids){
   const set = new Set(ids);
   t.nodes = t.nodes.filter(n => !set.has(n.id));
   t.edges = t.edges.filter(e => !set.has(e.from) && !set.has(e.to));
-  if(set.has(sel.nodeId)) sel.nodeId = null;
+  sel.nodeIds = sel.nodeIds.filter(id => !set.has(id));
   commit(); renderAll();
   toast('삭제했습니다');
 }
@@ -2032,6 +2209,14 @@ function bindCanvasEvents(){
     if(e.target !== wrapEl && e.target !== worldEl && e.target !== edgeSvg) return;
     if(e.button === 2) return;
     closeCtx();
+    /* 편집 모드 + 마우스 좌클릭(Space 미사용) → 드래그 다중 선택. 그 외(보기 모드·터치·휠클릭·Space) → 팬 */
+    const useMarquee = editMode && e.pointerType !== 'touch' && e.button === 0 && !spaceHeld;
+    if(useMarquee) startMarquee(e);
+    else startPan(e);
+  });
+
+  function startPan(e){
+    if(e.button === 1) e.preventDefault();
     const sx = e.clientX, sy = e.clientY, opx = view.px, opy = view.py;
     let moved = false;
     wrapEl.classList.add('panning');
@@ -2045,10 +2230,7 @@ function bindCanvasEvents(){
       window.removeEventListener('pointermove', mv);
       window.removeEventListener('pointerup', up);
       wrapEl.classList.remove('panning');
-      if(!moved && (sel.nodeId || sel.edgeId)){
-        sel = {nodeId:null, edgeId:null};
-        renderAll();
-      }
+      if(!moved) bgClickClear();
     };
     window.addEventListener('pointermove', mv);
     window.addEventListener('pointerup', up);
@@ -2057,7 +2239,54 @@ function bindCanvasEvents(){
       window.removeEventListener('pointerup', up);
       wrapEl.classList.remove('panning');
     });
-  });
+  }
+
+  function startMarquee(e){
+    const r0 = wrapEl.getBoundingClientRect();
+    const sx = e.clientX - r0.left, sy = e.clientY - r0.top;
+    let moved = false;
+    const mv = ev => {
+      const x = ev.clientX - r0.left, y = ev.clientY - r0.top;
+      if(Math.hypot(x - sx, y - sy) > 3) moved = true;
+      marqueeEl.hidden = false;
+      marqueeEl.style.left = Math.min(sx, x) + 'px';
+      marqueeEl.style.top = Math.min(sy, y) + 'px';
+      marqueeEl.style.width = Math.abs(x - sx) + 'px';
+      marqueeEl.style.height = Math.abs(y - sy) + 'px';
+    };
+    const up = ev => {
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', up);
+      marqueeEl.hidden = true;
+      if(!moved){ bgClickClear(); return; }
+      const x = ev.clientX - r0.left, y = ev.clientY - r0.top;
+      const a = screenToWorld(Math.min(sx, x), Math.min(sy, y));
+      const b = screenToWorld(Math.max(sx, x), Math.max(sy, y));
+      const tab = curTab(); if(!tab) return;
+      const hit = tab.nodes.filter(nd => {
+        const ns = nodeSizes[nd.id] || {w:200, h:70};
+        return nd.x < b.x && nd.x + ns.w > a.x && nd.y < b.y && nd.y + ns.h > a.y;
+      }).map(nd => nd.id);
+      sel = {nodeIds:hit, edgeId:null};
+      renderAll();
+      if(evPick.active) updatePickBanner();
+    };
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', up);
+    cleanupFns.push(() => {
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', up);
+      marqueeEl.hidden = true;
+    });
+  }
+
+  function bgClickClear(){
+    if(sel.nodeIds.length || sel.edgeId){
+      clearSel();
+      renderAll();
+      if(evPick.active) updatePickBanner();
+    }
+  }
 }
 /* ==================================================================
  * §5-4 노드 자동 정렬 — 부모-자식 관계만 사용하는 방사형 트리
@@ -2475,25 +2704,56 @@ function openEventModal(ev){
   };
 }
 
-/* AI 사건 생성 — 기존 노드 이름만 사용 (§6-4) */
-async function aiGenEvent(){
+/* §5-7 AI 사건 생성 — 노드 선택 모드: 고른 노드들이 주역/배경이 되는 사건 생성 */
+function startEventPick(){
   if(!reqEdit()) return;
+  if(linkMode.active) exitLink();
+  clearSel(); renderAll();
+  evPick = {active:true, busy:false};
+  pickBannerEl.hidden = false;
+  updatePickBanner();
+  toast('사건에 등장할 노드들을 선택한 뒤 ✨ 생성을 눌러주세요');
+}
+function exitEventPick(){
+  evPick = {active:false, busy:false};
+  if(pickBannerEl) pickBannerEl.hidden = true;
+  const b = $('#pickGo');
+  if(b){ b.disabled = false; b.textContent = '✨ 생성'; }
+}
+function togglePick(id){
+  sel.edgeId = null;
+  sel.nodeIds = isSel(id) ? sel.nodeIds.filter(x => x !== id) : [...sel.nodeIds, id];
+  renderAll();
+  updatePickBanner();
+}
+function updatePickBanner(){
+  const c = $('#pickCount'), b = $('#pickGo');
+  if(c) c.textContent = sel.nodeIds.length;
+  if(b) b.disabled = evPick.busy || !sel.nodeIds.length;
+}
+
+async function runEventPick(){
+  if(!evPick.active || evPick.busy) return;
   const tab = curTab();
-  const btn = $('#evAi');
-  btn.disabled = true;
-  const orig = btn.textContent;
-  btn.textContent = '생성 중…';
+  const picked = sel.nodeIds.map(id => nodeById(tab, id)).filter(Boolean);
+  if(!picked.length){ toast('노드를 1개 이상 선택해주세요', true); return; }
+  evPick.busy = true;
+  const btn = $('#pickGo');
+  btn.disabled = true; btn.textContent = '생성 중…';
   try{
     const c = buildCtx(tab);
     const sys = worldSystem(tab) +
-      `\n\n[중요 제약] 사건을 만들 때 반드시 아래 "사용 가능한 이름" 목록에 있는 인물·장소·사물·집단만 등장시켜야 한다. 새로운 고유명사를 만들어내면 안 된다.\n사용 가능한 이름: ${c.names.join(', ') || '(없음)'}`;
+      `\n\n[중요 제약] 사건에는 반드시 아래 "사용 가능한 이름" 목록에 있는 대상만 등장시켜야 한다. 새로운 고유명사를 만들어내면 안 된다.\n사용 가능한 이름: ${c.names.join(', ') || '(없음)'}`;
     const user =
-      `이 세계관의 연표에 어울리는 새 사건 1개를 만들어라.\n` +
-      `- 반드시 사용 가능한 이름 목록의 대상만 등장: ${c.names.join(', ') || '(없음)'}\n` +
+      `아래 [선택된 노드]들이 사건의 주역이 되거나 사건이 벌어지는 배경이 되는 새 사건 1개를 만들어라.\n` +
+      `[선택된 노드]\n` +
+      picked.map(p => `- ${p.name} (${TL[p.type] || '기타'})${p.desc ? ': ' + p.desc : ''}`).join('\n') + `\n` +
+      `- 선택된 노드 전부가 자연스럽게 얽히도록 하라.\n` +
+      `- 그 외 등장 대상도 사용 가능한 이름 목록(${c.names.join(', ') || '없음'}) 안에서만 고른다.\n` +
       `- 기존 사건들과 시간 흐름이 자연스럽게 이어지도록 order 정수를 정하라. 기존 사건 사이에 끼워 넣어도 된다.\n` +
       `- 다른 설명 없이 아래 JSON 형식만 출력하라:\n` +
       `{"time":"자유 형식 시간 표현","body":"사건 내용 2~4문장","order":정수}`;
-    const raw = await callClaude(sys, [{role:'user', content:user}], 1200);
+    const raw = await callClaude(sys, [{role:'user', content:user}], 1400);
     const parsed = parseAIJson(raw, 'object');
     if(!parsed || !parsed.body) throw new Error('AI 응답을 해석하지 못했습니다. 다시 시도해주세요.');
     tab.events.push({
@@ -2502,13 +2762,16 @@ async function aiGenEvent(){
       body: String(parsed.body),
       order: Number.isFinite(+parsed.order) ? Math.round(+parsed.order) : maxOrder(tab) + 10
     });
-    commit(); renderEvents();
-    toast('AI가 새 사건을 추가했습니다');
+    commit();
+    exitEventPick();
+    clearSel(); renderAll();
+    if(rpCur !== 'events') openPanel('events'); else renderEvents();
+    toast(`선택한 노드 ${picked.length}개를 바탕으로 사건을 추가했습니다`);
   }catch(err){
     toast(err.message, true);
-  }finally{
-    btn.disabled = false;
-    btn.textContent = orig;
+    evPick.busy = false;
+    updatePickBanner();
+    btn.textContent = '✨ 생성';
   }
 }
 /* ==================================================================
@@ -2733,7 +2996,7 @@ function openRecChildren(node){
       };
       tab.nodes.push(nn);
       tab.edges.push({id:gid(), from:node.id, to:nn.id, label:'', desc:'', isParent:true});
-      sel = {nodeId:nn.id, edgeId:null};
+      sel = {nodeIds:[nn.id], edgeId:null};
       commit(); renderAll();
       toast(`"${nn.name}" 하위 노드를 추가했습니다`);
     });
@@ -2872,7 +3135,7 @@ function switchTab(id){
   clearPreview();          // 떠나는 탭의 AI 미리보기 정리
   exitLink(); closeCtx();
   activeTabId = id;
-  sel = {nodeId:null, edgeId:null};
+  clearSel(); exitEventPick();
   renderTabs(); renderAll(); zoomFit(); refreshOpenPanels();
   if(fbReady) attachTab(id);
   markDirty();
@@ -2928,7 +3191,7 @@ function askDeleteTab(t){
       if(fbReady && fbRoot) fbRoot.child('tabs/' + t.id).remove().catch(()=>{});
       if(activeTabId === t.id){
         activeTabId = tabs[0].id;
-        sel = {nodeId:null, edgeId:null};
+        clearSel();
         if(fbReady) attachTab(activeTabId);
         renderAll(); zoomFit(); refreshOpenPanels();
       }
@@ -2996,6 +3259,52 @@ async function toggleLock(){
   ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
   btn.onclick = go;
   input.addEventListener('keydown', e => { if(e.key === 'Enter') go(); });
+}
+
+/* ==================================================================
+ * ↩ 되돌리기 / 다시 실행 — commit 시점 스냅샷 복원
+ * ================================================================== */
+function applySnapshot(st){
+  tabs = st.tabs.map(t => sanitizeTab({
+    ...t,
+    nodes: t.nodes.map(n => ({...n, _exp:false})),
+    edges: t.edges.map(e => ({...e})),
+    events: t.events.map(v => ({...v})),
+    refImages: [...(t.refImages || [])]
+  }));
+  if(!tabs.length) tabs = [makeDefaultTab()];
+  const sameTab = tabs.some(t => t.id === st.activeTabId) && st.activeTabId === activeTabId;
+  activeTabId = tabs.some(t => t.id === st.activeTabId) ? st.activeTabId : tabs[0].id;
+  clearSel(); exitLink(); exitEventPick();
+  aiPanelEl.hidden = true;
+  ensureIdCounter();
+  markDirty();
+  renderTabs(); renderAll(); refreshOpenPanels();
+  if(fbReady){
+    if(sameTab){
+      fbSyncActive();                       // 스냅샷 diff로 서버도 이전 상태로
+    }else{
+      attachTab(activeTabId, false);        // 서버 값으로 덮지 않고(로컬 우선) 스냅샷만 재구축 → 내부에서 push
+    }
+  }
+}
+function doUndo(){
+  if(!reqEdit()) return;
+  if(!undoStack.length){ toast('되돌릴 작업이 없습니다'); return; }
+  redoStack.push(snapState());
+  const st = undoStack.pop();
+  lastState = st;
+  applySnapshot(st);
+  toast('되돌렸습니다');
+}
+function doRedo(){
+  if(!reqEdit()) return;
+  if(!redoStack.length){ toast('다시 실행할 작업이 없습니다'); return; }
+  undoStack.push(snapState());
+  const st = redoStack.pop();
+  lastState = st;
+  applySnapshot(st);
+  toast('다시 실행했습니다');
 }
 
 /* ==================================================================
@@ -3142,6 +3451,8 @@ function bindStaticUI(){
   aiPanelEl = $('#aiPanel');     aiPanelInfoEl = $('#aiPanelInfo');
   syncDotEl = $('#syncDot');     syncTxtEl = $('#syncTxt');
   chatLogEl = $('#chatLog');     evListEl = $('#evList');
+  pickBannerEl = $('#pickBanner'); marqueeEl = $('#marquee');
+  guideV = $('#guideV');         guideH = $('#guideH');
 
   bindCanvasEvents();
 
@@ -3180,8 +3491,11 @@ function bindStaticUI(){
     if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendChat(); }
   });
   $('#evAdd').onclick = () => openEventModal(null);
-  $('#evAi').onclick = aiGenEvent;
+  $('#evAi').onclick = startEventPick;
   $('#linkCancel').onclick = exitLink;
+  $('#btnUndo').onclick = doUndo;
+  $('#pickGo').onclick = runEventPick;
+  $('#pickCancel').onclick = () => { exitEventPick(); clearSel(); renderAll(); };
   $('#aiAccept').onclick = acceptPreview;
   $('#aiRetry').onclick = () => {
     if(!lastGenPrompt) return;
@@ -3196,14 +3510,27 @@ function bindStaticUI(){
   document.addEventListener('pointerdown', e => {
     if(!ctxEl.hidden && !ctxEl.contains(e.target)) closeCtx();
   });
+  const typing = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
   document.addEventListener('keydown', e => {
+    if(e.key === ' ' && !typing()) spaceHeld = true;
+    if((e.ctrlKey || e.metaKey) && !typing() && (e.key === 'z' || e.key === 'Z')){
+      e.preventDefault();
+      e.shiftKey ? doRedo() : doUndo();
+      return;
+    }
+    if((e.ctrlKey || e.metaKey) && !typing() && (e.key === 'y' || e.key === 'Y')){
+      e.preventDefault(); doRedo(); return;
+    }
     if(e.key !== 'Escape') return;
     if(!ctxEl.hidden){ closeCtx(); return; }
     if(linkMode.active){ exitLink(); return; }   // §9 ESC → 관계 추가 취소
+    if(evPick.active){ exitEventPick(); clearSel(); renderAll(); return; }
     const tm = topModal();
     if(tm){ closeModal(tm); return; }
-    if(sel.edgeId || sel.nodeId){ sel = {nodeId:null, edgeId:null}; renderAll(); }
+    if(sel.edgeId || sel.nodeIds.length){ clearSel(); renderAll(); }
   });
+  document.addEventListener('keyup', e => { if(e.key === ' ') spaceHeld = false; });
+  window.addEventListener('blur', () => { spaceHeld = false; });
 }
 
 async function main(){
@@ -3226,6 +3553,7 @@ async function main(){
   if(!tabs.length) tabs = [makeDefaultTab()];
   if(!tabs.find(t => t.id === activeTabId)) activeTabId = tabs[0].id;
   ensureIdCounter();
+  lastState = snapState();                 // 되돌리기 기준점
   if(getToken()) editMode = true;          // 같은 세션(탭) 안에서는 새로고침해도 잠금 해제 유지
   updateModeUI();
   renderTabs(); renderAll(); zoomFit();

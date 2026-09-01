@@ -11,6 +11,8 @@
  *  - ANTHROPIC_API_KEY  (필수)
  *  - MASTER_CODE        (필수) 사용자가 🔒 버튼에 입력하는 코드
  *  - GOOGLE_API_KEY     (선택) 이미지 생성을 쓸 때만
+ *  - ANTHROPIC_WORKSPACE_ID (선택) 키가 여러 워크스페이스용(개인/서비스 계정 키)이면 필요. wrkspc_… 형식.
+ *                       콘솔 Settings → Workspaces 의 ID 열. 단일 워크스페이스 키면 비워둠.
  *  - TOKEN_SECRET       (선택) 미설정 시 MASTER_CODE에서 파생 → 코드를 바꾸면 기존 토큰이 모두 만료됨
  *
  * 일반 변수 (Text)
@@ -148,16 +150,22 @@ async function handleClaude(request, env, cors){
   if(typeof b.system === 'string') payload.system = b.system;
   if(typeof b.temperature === 'number') payload.temperature = b.temperature;
 
-  const r = await fetch(ANTHROPIC_URL, {
-    method:'POST',
-    headers:{
-      'content-type':'application/json',
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version':'2023-06-01'
-    },
-    body: JSON.stringify(payload)
-  });
-  const text = await r.text();
+  const headers = {
+    'content-type':'application/json',
+    'x-api-key': env.ANTHROPIC_API_KEY,
+    'anthropic-version':'2023-06-01'
+  };
+  const ws = String(env.ANTHROPIC_WORKSPACE_ID || '').trim();
+  if(ws) headers['anthropic-workspace-id'] = ws;     // 다중 워크스페이스 키(개인/서비스 계정 키)용
+
+  const r = await fetch(ANTHROPIC_URL, {method:'POST', headers, body: JSON.stringify(payload)});
+  let text = await r.text();
+  if(r.status === 400 && /anthropic-workspace-id/i.test(text)){
+    text = JSON.stringify({error:{message:
+      'Anthropic 키가 여러 워크스페이스용 키라서 워크스페이스 ID가 필요합니다. ' +
+      'Worker 변수 ANTHROPIC_WORKSPACE_ID 에 콘솔(Settings → Workspaces)의 wrkspc_… ID를 넣고 Deploy 하거나, ' +
+      '워크스페이스를 하나만 지정한 키를 새로 발급해 ANTHROPIC_API_KEY 를 교체하세요.'}});
+  }
   return new Response(text, {
     status: r.status,
     headers:{...cors, 'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store'}
