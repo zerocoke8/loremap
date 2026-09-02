@@ -254,6 +254,9 @@ body.edit div.eo,body.edit span.eo{display:flex}
 #pickBanner button.go{color:var(--gold2);border-color:var(--gold)}
 #pickBanner button.go:hover{background:rgba(212,169,71,.14)}
 #pickBanner button:disabled{opacity:.45;cursor:not-allowed}
+.row-btns{display:flex;gap:8px;flex-wrap:wrap}
+.row-btns .btn{flex:1;min-width:150px}
+.hint{margin-top:7px;color:var(--text3);font-size:12px;line-height:1.6}
 #marquee{
   position:absolute;z-index:16;pointer-events:none;border-radius:4px;
   border:1.5px dashed var(--accent2);background:rgba(124,106,247,.10);
@@ -482,8 +485,6 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
   <button class="tb" id="btnChat">💬 대화</button>
   <button class="tb" id="btnEvents">📜 사건</button>
   <button class="tb" id="btnSettings">⚙ 설정</button>
-  <button class="tb" id="btnExport">💾 저장</button>
-  <button class="tb" id="btnImport" title="편집 모드에서 사용 가능">📂 로드</button>
   <input type="file" id="fileImport" accept=".json,application/json" hidden>
 </div>
 
@@ -3552,6 +3553,13 @@ function openSettings(){
         </div></div>
       ${showFb ? `<div><label>Firebase 설정 (이 파일에 내장된 설정이 없을 때만) — JSON · 객체 리터럴 · const firebaseConfig = {…}; 모두 인식</label>
         <textarea id="stFb" rows="5" spellcheck="false" placeholder='{"apiKey":"...", "databaseURL":"https://...firebasedatabase.app", ...}'>${escHtml(curFbRaw)}</textarea></div>` : ''}
+      <div><label>데이터</label>
+        <div class="row-btns">
+          <button class="btn" id="stExport">💾 파일로 저장</button>
+          <button class="btn" id="stImport">📂 파일에서 불러오기</button>
+        </div>
+        <div class="hint">저장은 <b>worldmind-export.json</b> 파일을 내려받습니다. 불러오기는 <b>모든 탭을 교체</b>하므로 편집 모드에서만 쓸 수 있습니다.</div>
+      </div>
       <div class="infobox">AI 모델: ${AI_MODEL} · 이미지: ${IMG_MODEL}<br>
         API 키와 마스터 코드는 관리자의 서버(Cloudflare Worker)에서만 관리됩니다.
         ${API_BASE ? '서버: ' + escHtml(API_BASE) : '<span style="color:var(--danger)">⚠ 이 파일에 API_BASE가 설정되지 않아 AI 기능을 쓸 수 없습니다.</span>'}
@@ -3569,6 +3577,11 @@ function openSettings(){
     const sh = ov.querySelector('[name=stShape]:checked');
     applyEdgeShape(sh ? sh.value : prevShape, true);
     themeCommitted = true;
+  };
+  ov.querySelector('#stExport').onclick = exportJson;
+  ov.querySelector('#stImport').onclick = () => {
+    if(!editMode){ toast('불러오기는 모든 데이터를 덮어쓰므로 🔒 버튼으로 편집 모드에 들어간 뒤 사용할 수 있습니다', true); return; }
+    $('#fileImport').click();
   };
   ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
   ov.querySelector('[data-a=s]').onclick = async () => {
@@ -3651,11 +3664,6 @@ function bindStaticUI(){
   $('#btnChat').onclick = () => openPanel('chat');
   $('#btnEvents').onclick = () => openPanel('events');
   $('#btnSettings').onclick = openSettings;
-  $('#btnExport').onclick = exportJson;
-  $('#btnImport').onclick = () => {
-    if(!editMode){ toast('로드는 모든 데이터를 덮어쓰므로 🔒 버튼으로 편집 모드에 들어간 뒤 사용할 수 있습니다', true); return; }
-    $('#fileImport').click();
-  };
   $('#fileImport').addEventListener('change', e => {
     handleImportFile(e.target.files[0]);
     e.target.value = '';
