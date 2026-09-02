@@ -1196,7 +1196,11 @@ async function initFB(cfg, hadLocal){
     /* 연결 상태 */
     const cref = fbDb.ref('.info/connected');
     const ccb = cref.on('value', s => {
-      setStatus(s.val() ? 'ok' : 'warn', s.val() ? '실시간 동기화' : '연결 중…');
+      /* ⚠ 쓰기가 막힌 상태(fbWriteBroken)면 연결이 붙어도 녹색으로 되돌리지 않는다 —
+         그러지 않으면 규칙·권한 문제로 저장이 안 되는데 칩만 정상으로 보인다 */
+      if(!s.val()){ setStatus('warn', '연결 중…'); return; }
+      if(fbWriteBroken){ setStatus('err', '저장 실패'); return; }
+      setStatus('ok', '실시간 동기화');
     });
     fbGlobalUnsubs.push([cref,'value',ccb]);
 
@@ -1214,6 +1218,7 @@ async function initFB(cfg, hadLocal){
     console.error('Firebase 초기화 실패', err);
     setStatus('err','연결 오류');
     fbReady = false;
+    toast('Firebase에 연결하지 못했습니다 — 이 브라우저에만 저장됩니다 (콘솔에 원인이 남습니다)', true);
   }
 }
 
@@ -1653,8 +1658,9 @@ async function pushAllToFB(){
     catch(e2){ lastTabListJson = prevJson; throw e2; }
     fbSnap = emptySnap();
   }catch(err){
-    console.error('전체 동기화 실패', err);
-    toast('Firebase 동기화 중 오류가 발생했습니다', true);
+    /* 칩까지 빨갛게 만들어야 사용자가 '서버에 안 올라갔다'는 걸 알아차린다 */
+    fbWriteFail(err);
+    toast('Firebase 전체 동기화에 실패했습니다 — 변경 내용이 이 브라우저에만 남습니다', true);
   }
 }
 /* ==================================================================
