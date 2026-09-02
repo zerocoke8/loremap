@@ -10,6 +10,8 @@ index.html             앱 전체 (HTML+CSS+JS 단일 파일, 약 3,000줄) — 
 worker/src/worker.js   Cloudflare Worker: 마스터 코드 검증, 토큰 발급, Anthropic/Gemini 프록시
 worker/wrangler.toml   CLI 배포용 (대시보드 붙여넣기 배포면 불필요)
 tests/                 jsdom 기반 통합 테스트 + Worker 단위 테스트  →  npm test
+tests/check-syntax.js  index.html 안 <script> 문법 검사  →  npm run check (CRLF·cmd.exe 안전)
+.gitignore/.gitattributes  node_modules 커밋 사고 방지 · 줄바꿈은 저장소에 LF 로 통일
 docs/SPEC-요약.md      원본 스펙의 핵심 제약 요약 (원본 WorldMind-스펙.md가 있으면 docs/에 추가할 것)
 README.md              배포 안내 (관리자용)
 ```

@@ -1,0 +1,13 @@
+# 의존성 — package-lock.json 으로 재현하므로 커밋하지 않는다
+node_modules/
+
+# npm run check 가 문법 검사용으로 잠깐 만들었다 지우는 파일
+.app-check.js
+
+# 임시 작업 파일
+*.tmp.js
+.chk.js
+
+# OS 부스러기
+.DS_Store
+Thumbs.db

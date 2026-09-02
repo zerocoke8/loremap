@@ -1,16 +1,28 @@
 # WorldMind API 프록시 — Cloudflare Worker 설정 (CLI 배포용)
 # 대시보드에서 붙여넣기로 배포한다면 이 파일은 필요 없습니다. README.md 참고.
+#
+# ⚠ 중요: wrangler deploy 는 아래 [vars] 로 대시보드의 "일반 변수"를 덮어씁니다.
+#    대시보드에만 넣어둔 일반 변수가 있다면 여기에도 반드시 적어야 지워지지 않습니다.
+#    (비밀 변수 secret 은 덮어쓰지 않으니 안전합니다)
 
 name = "worldmind-api"
 main = "src/worker.js"
 compatibility_date = "2026-08-01"
 
 [vars]
-# 허용할 사이트 주소 (쉼표로 여러 개). GitHub Pages 주소로 바꾸세요.
-# 로컬 파일(file://)로도 테스트하려면 ",null" 을 덧붙이세요.
-ALLOWED_ORIGINS = "https://YOUR-GITHUB-ID.github.io"
+# 허용할 사이트 주소 (쉼표로 여러 개).
+#   · 로컬 개발 서버도 쓰려면: "https://zerocoke8.github.io,http://localhost:3000"
+#   · 내 PC 의 파일(file://)로 열어 테스트하려면 ",null" 을 덧붙입니다.
+#     단 null 을 허용하면 아무 로컬 페이지나 이 Worker 를 부를 수 있으니
+#     (마스터 코드는 여전히 필요합니다) 테스트가 끝나면 되돌리세요.
+ALLOWED_ORIGINS = "https://zerocoke8.github.io"
+
+# ANTHROPIC_WORKSPACE_ID 를 대시보드에 일반 변수로 넣어 두었다면,
+# CLI 로 배포할 때 지워지지 않도록 아래 주석을 풀고 값을 채우세요.
+# ANTHROPIC_WORKSPACE_ID = ""
 
 # 비밀 변수는 파일에 쓰지 말고 아래 명령으로 등록하세요:
 #   npx wrangler secret put ANTHROPIC_API_KEY
 #   npx wrangler secret put MASTER_CODE
 #   npx wrangler secret put GOOGLE_API_KEY     (이미지 생성을 쓸 때만)
+#   npx wrangler secret put TOKEN_SECRET       (선택 — 마스터 코드를 바꿔도 기존 토큰을 유지하고 싶을 때)

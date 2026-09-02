@@ -1,0 +1,24 @@
+# 줄바꿈은 저장소에 항상 LF 로 저장한다.
+# 각자의 core.autocrlf 설정과 무관하게 통일되므로, 윈도우에서 체크아웃한 사람이
+# 커밋할 때 파일 전체가 바뀐 것처럼 보이는 가짜 diff 가 생기지 않는다.
+# (작업 트리 줄바꿈은 건드리지 않는다 — 윈도우는 CRLF 로 받아도 그대로 둔다)
+* text=auto
+
+# 텍스트로 확실히 다뤄야 하는 것들
+*.html   text
+*.js     text
+*.mjs    text
+*.json   text
+*.md     text
+*.toml   text
+*.css    text
+
+# 바이너리 — 줄바꿈 변환 금지
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.webp   binary
+*.ico    binary
+*.woff   binary
+*.woff2  binary

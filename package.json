@@ -6,7 +6,7 @@
     "test": "node tests/run-all.js",
     "test:worker": "node tests/worker.test.mjs",
     "test:app": "node tests/dom.test.js && node tests/fb.test.js && node tests/proxy.test.js",
-    "check": "node -e \"const s=require('fs').readFileSync('index.html','utf8');const m=s.match(/\\n<script>\\n([\\s\\S]*?)\\n<\\/script>/);require('fs').writeFileSync('.app-check.js',m[1]);\" && node --check .app-check.js && rm .app-check.js && echo 'index.html 스크립트 문법 OK'",
+    "check": "node tests/check-syntax.js",
     "deploy:worker": "cd worker && npx wrangler deploy"
   },
   "devDependencies": {
