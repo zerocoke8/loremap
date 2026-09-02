@@ -1361,16 +1361,36 @@ function handleRemoteItem(tabId, kind, mode, id, val){
 }
 
 /* ---------------- 쓰기: 변경 항목만 diff 전송 (§3) ---------------- */
+/* 쓰기 실패는 조용히 넘기지 않는다 — 스냅샷을 되돌려 다음 commit에서 재시도하고 사용자에게 알린다.
+   (규칙·권한 문제로 서버 저장이 막히면 화면은 멀쩡한데 데이터만 로컬에 갇히기 때문) */
+let fbWriteBroken = false;
+function fbWriteFail(err, rollback){
+  if(rollback) rollback();          // 스냅샷 롤백 → 다음 diff가 같은 항목을 다시 보낸다
+  console.error('Firebase 쓰기 실패', err);
+  if(fbWriteBroken) return;         // 연속 실패는 한 번만 알린다
+  fbWriteBroken = true;
+  setStatus('err', '저장 실패');
+  toast('Firebase에 저장하지 못했습니다 — 변경 내용이 이 브라우저에만 남습니다', true);
+}
+function fbWriteOk(){
+  if(!fbWriteBroken) return;
+  fbWriteBroken = false;
+  setStatus('ok', '실시간 동기화');
+  toast('Firebase 저장이 복구되었습니다');
+}
+
 function fbSyncActive(){
   if(!fbReady || !fbRoot) return;
+  if(!editMode) return;             // 보기 전용은 서버에 쓰지 않는다 (읽기·실시간 수신은 그대로)
   const tab = curTab(); if(!tab) return;
 
   /* 탭 목록 */
   const tl = tabs.map(t => ({id:t.id, title:t.title ?? '무제'}));
   const tj = JSON.stringify(tl);
   if(tj !== lastTabListJson){
+    const prev = lastTabListJson;
     lastTabListJson = tj;
-    fbRoot.child('tabList').set(tl).catch(()=>{});
+    fbRoot.child('tabList').set(tl).then(fbWriteOk, err => fbWriteFail(err, () => { lastTabListJson = prev; }));
   }
 
   if(curAttachId !== tab.id) return;   // 활성 탭 리스너 준비 후에만 항목 diff
@@ -1378,8 +1398,10 @@ function fbSyncActive(){
 
   const mj = JSON.stringify(metaFB(tab));
   if(fbSnap.meta !== mj){
+    const prev = fbSnap.meta;
     fbSnap.meta = mj;
-    tref.child('meta').set({...metaFB(tab), _w:FB_SID}).catch(()=>{});
+    tref.child('meta').set({...metaFB(tab), _w:FB_SID})
+      .then(fbWriteOk, err => fbWriteFail(err, () => { fbSnap.meta = prev; }));
   }
 
   const kinds = [
@@ -1393,14 +1415,20 @@ function fbSyncActive(){
       const j = JSON.stringify(normFB(kind, it));
       seen[it.id] = 1;
       if(fbSnap[kind][it.id] !== j){
+        const prev = fbSnap[kind][it.id];
         fbSnap[kind][it.id] = j;
-        tref.child(kind + '/' + it.id).set({...normFB(kind,it), _w:FB_SID}).catch(()=>{});
+        tref.child(kind + '/' + it.id).set({...normFB(kind,it), _w:FB_SID})
+          .then(fbWriteOk, err => fbWriteFail(err, () => {
+            if(prev === undefined) delete fbSnap[kind][it.id]; else fbSnap[kind][it.id] = prev;
+          }));
       }
     });
     Object.keys(fbSnap[kind]).forEach(id => {
       if(!seen[id]){
+        const prev = fbSnap[kind][id];
         delete fbSnap[kind][id];
-        tref.child(kind + '/' + id).remove().catch(()=>{});
+        tref.child(kind + '/' + id).remove()
+          .then(fbWriteOk, err => fbWriteFail(err, () => { fbSnap[kind][id] = prev; }));
       }
     });
   });
@@ -3188,7 +3216,7 @@ function askDeleteTab(t){
          `<span style="color:var(--text3)">노드 ${t.nodes.length} · 관계 ${t.edges.length} · 사건 ${t.events.length}개가 함께 삭제됩니다.</span>`,
     onOk:() => {
       tabs = tabs.filter(x => x.id !== t.id);
-      if(fbReady && fbRoot) fbRoot.child('tabs/' + t.id).remove().catch(()=>{});
+      if(fbReady && fbRoot) fbRoot.child('tabs/' + t.id).remove().then(fbWriteOk, err => fbWriteFail(err));
       if(activeTabId === t.id){
         activeTabId = tabs[0].id;
         clearSel();

@@ -51,7 +51,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 ## 동작 원리 요약
 
 - **편집 모드**: 기본 보기 전용. 🔒 → `apiAuth(code)` → Worker가 `MASTER_CODE`와 비교 → 12h HMAC 토큰 → sessionStorage. AI 호출은 토큰 필수, 401이면 토큰 삭제 + 보기 모드 복귀. 마스터 코드를 바꾸면 모든 토큰 무효.
-- **동기화**: 로컬은 1.2초 주기 `saveLocal`, Firebase는 `commit()` 시 즉시 항목 단위 diff(`fbSnap` 스냅샷과 비교). `attachTab`은 스냅샷을 항상 빈 상태에서 시작해 서버 once 읽기로 채운다 — 복제 탭이 전량 push되는 이유. 수신은 `_w===FB_SID`면 무시, 50ms 디바운스 렌더.
+- **동기화**: 로컬은 1.2초 주기 `saveLocal`, Firebase는 `commit()` 시 즉시 항목 단위 diff(`fbSnap` 스냅샷과 비교). `attachTab`은 스냅샷을 항상 빈 상태에서 시작해 서버 once 읽기로 채운다 — 복제 탭이 전량 push되는 이유. 수신은 `_w===FB_SID`면 무시, 50ms 디바운스 렌더. `fbSyncActive`는 **편집 모드에서만** 쓴다(보기 전용은 읽기·실시간 수신만). 쓰기가 실패하면 `fbWriteFail`이 `fbSnap` 항목을 롤백해 다음 `commit()`에서 재시도하고 상태 칩을 '저장 실패'로 바꾼다.
 - **설정**: 테마(`body.light` + CSS 변수), 연결선 색(`--ec` 변수, 선택/미리보기 규칙이 우선), 연결선 모양(곡선/직선). 즉시 미리보기 → 저장 시 유지, 취소 시 `onClose`로 복귀.
 
 ## 자주 걸리는 함정
@@ -66,6 +66,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - 연결선 색은 CSS에서 `stroke:var(--ec, 기본색)` 형태라야 선택 강조(esel)·미리보기(preview) 규칙보다 뒤로 밀리지 않는다. `!important`나 id 선택자로 덮지 말 것.
 - 드래그 중에는 `updateEdgesFor`만, 트윈 중에는 `updateAllEdgeGeom`만 호출한다(전체 재렌더 금지).
 - Firebase 스냅샷 로직을 손댈 때는 `tests/fb.test.js`(인메모리 Firebase 스텁)로 반드시 검증.
+- Firebase 쓰기에 `.catch(()=>{})`를 쓰지 말 것. 실패가 조용히 묻히면 화면은 멀쩡한데 변경은 로컬에만 갇힌다(규칙·권한 문제에서 실제로 발생). `.then(fbWriteOk, err => fbWriteFail(err, 스냅샷롤백))` 형태를 쓸 것 — 롤백을 빠뜨리면 `fbSnap`이 "서버에 있다"고 착각해 영영 재전송하지 않는다.
 - `worker.js`는 요청 필드를 화이트리스트로만 전달한다. 새 API 파라미터가 필요하면 Worker와 클라이언트 양쪽을 함께 수정.
 
 ## 배포

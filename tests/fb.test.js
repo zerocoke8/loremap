@@ -38,6 +38,7 @@ function makeFirebaseStub(initialDb, writeLog){
     else cur[ss[ss.length-1]] = cp(v);
     scheduleProcess();
   }
+  let failing = false;             // 규칙·권한으로 쓰기가 막힌 상황 주입용
   let scheduled = false;
   function scheduleProcess(){
     if(scheduled) return;
@@ -81,8 +82,8 @@ function makeFirebaseStub(initialDb, writeLog){
         const i = listeners.findIndex(L => L.path === path && L.evt === evt && L.cb === cb);
         if(i >= 0) listeners.splice(i, 1);
       },
-      set: v => { setPath(path, v); return Promise.resolve(); },
-      remove: () => { setPath(path, undefined); return Promise.resolve(); }
+      set: v => { if(failing) return Promise.reject(new Error('PERMISSION_DENIED')); setPath(path, v); return Promise.resolve(); },
+      remove: () => { if(failing) return Promise.reject(new Error('PERMISSION_DENIED')); setPath(path, undefined); return Promise.resolve(); }
     };
   }
   return {
@@ -90,6 +91,7 @@ function makeFirebaseStub(initialDb, writeLog){
       initializeApp: () => ({ database: () => ({ ref: mkRef }), delete: async () => {} })
     },
     getPath, setPath,
+    setFailing: v => { failing = v; },
     _db: () => db
   };
 }
@@ -180,6 +182,36 @@ function makeFirebaseStub(initialDb, writeLog){
   await wait(250);
   T('E1 원격 탭 목록 수신', E("tabs.length===3 && tabs[2].title==='원격 신규'"));
   T('E2 원격 탭 내용 로드', E("tabs[2].nodes.length===1 && tabs[2].nodes[0].name==='외딴 섬'"));
+
+  /* --- F. 보기 전용은 서버에 쓰지 않는다 (D·E에서 활성 탭이 바뀌었으므로 i500으로 되돌린다) --- */
+  E('setEditMode(true)');
+  E("switchTab('i500')");
+  await wait(150);
+  T('F0 활성 탭 복귀', E('activeTabId') === 'i500');
+  E('setEditMode(false)');
+  writeLog.length = 0;
+  E("curTab().nodes.push({id:'iVIEW', type:'item', name:'보기모드 추가', desc:'', x:2500, y:2500}); commit();");
+  await wait(60);
+  T('F1 보기 모드에서는 서버 쓰기 없음', writeLog.length === 0, writeLog);
+  T('F2 서버에 반영되지 않음', !stub.getPath('worldmind/tabs/i500/nodes/iVIEW'));
+
+  /* --- G. 쓰기 실패: 알리고, 스냅샷을 롤백해 다음 commit에서 재시도 --- */
+  E('setEditMode(true)');
+  E('commit();');
+  await wait(80);
+  T('G0 편집 모드 복귀 후 밀린 변경이 서버에 반영', stub.getPath('worldmind/tabs/i500/nodes/iVIEW')?.name === '보기모드 추가');
+  stub.setFailing(true);
+  writeLog.length = 0;
+  E("nodeById(curTab(),'iVIEW').name = '실패할 이름'; commit();");
+  await wait(80);
+  T('G1 실패를 토스트로 알림', [...doc.querySelectorAll('.toast.err')].some(t => t.textContent.includes('저장하지 못했습니다')));
+  T('G2 상태 칩이 저장 실패로', doc.getElementById('syncTxt').textContent === '저장 실패');
+  T('G3 서버에는 반영되지 않음', stub.getPath('worldmind/tabs/i500/nodes/iVIEW').name === '보기모드 추가');
+  stub.setFailing(false);
+  E('commit();');                                    // 데이터는 그대로 — 스냅샷 롤백 덕에 재전송돼야 한다
+  await wait(80);
+  T('G4 스냅샷 롤백 → 다음 commit에서 재시도 성공', stub.getPath('worldmind/tabs/i500/nodes/iVIEW').name === '실패할 이름');
+  T('G5 복구되면 상태 칩도 돌아옴', doc.getElementById('syncTxt').textContent === '실시간 동기화');
 
   T('전 과정 예외 없음', errs.length === 0, errs);
   console.log('\n결과: ' + pass + ' 통과 / ' + fail + ' 실패');
