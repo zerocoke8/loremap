@@ -76,11 +76,26 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
 
   /* ---- 4. 마퀴 다중 선택 + 그룹 드래그 + Shift 스냅 ---- */
   {
-    /* 마퀴: a(1000,1000)와 c(1000,1500)를 포함하는 화면 사각형 드래그 */
+    /* 빈 캔버스 드래그(수식키 없음) → 팬. 마퀴가 뜨면 안 된다 */
+    E('view.z=0.2; view.px=-100; view.py=-100; applyView()');
+    {
+      const cw = doc.getElementById('cwrap');
+      const down0 = new w.MouseEvent('pointerdown', {bubbles:true, clientX:300, clientY:300, button:0});
+      Object.defineProperty(down0, 'target', {value: cw});
+      cw.dispatchEvent(down0);
+      w.dispatchEvent(new w.MouseEvent('pointermove', {clientX:340, clientY:310}));
+      T('빈 캔버스 드래그 = 팬 (마퀴 표시 안 함)', doc.getElementById('marquee').hidden && cw.classList.contains('panning'));
+      T('팬으로 뷰포트 이동 (+40,+10)', E('view.px') === -60 && E('view.py') === -90);
+      w.dispatchEvent(new w.MouseEvent('pointerup', {clientX:340, clientY:310}));
+      await wait(30);
+      T('팬 종료 후 panning 해제', !cw.classList.contains('panning'));
+    }
+
+    /* 마퀴: Ctrl+드래그로 a(1000,1000)와 c(1000,1500)를 포함하는 화면 사각형 지정 */
     E('view.z=0.2; view.px=-100; view.py=-100; applyView()');
     const w2s = (wx, wy) => E(`(function(){return {x:${wx}*view.z+view.px, y:${wy}*view.z+view.py};})()`);
     const p1 = w2s(950, 950), p2 = w2s(1350, 1650);
-    const down = new w.MouseEvent('pointerdown', {bubbles:true, clientX:p1.x, clientY:p1.y, button:0});
+    const down = new w.MouseEvent('pointerdown', {bubbles:true, clientX:p1.x, clientY:p1.y, button:0, ctrlKey:true});
     Object.defineProperty(down, 'target', {value: doc.getElementById('cwrap')});
     doc.getElementById('cwrap').dispatchEvent(down);
     w.dispatchEvent(new w.MouseEvent('pointermove', {clientX:p2.x, clientY:p2.y}));

@@ -42,7 +42,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§2-2 / §2-3 / §3 Firebase` | `initFB`, `migrateIfOld`, `attachTab`, `handleRemoteItem`, `fbSyncActive`(diff 전송), `pushAllToFB` |
 | `캔버스 뷰포트` / `렌더 파이프라인` | 팬·줌, `renderAll = renderNodes + renderEdges` (각 1회 원칙) |
 | `연결선 지오메트리` | `buildObstacles`, `edgePath`(2차 베지어), `chooseCurve`(노드 회피 굴곡 선택), `setEdgeGeom` |
-| `§5-2 노드 상호작용` | 클릭 펼침, 다중 선택(`sel.nodeIds`, Ctrl/Shift+클릭·마퀴), 그룹 드래그, Shift 정렬 스냅(`computeSnap`+가이드선), 3px 드래그, 0.5s 롱프레스, `_justDragged`, `cleanupFns` |
+| `§5-2 노드 상호작용` | 클릭 펼침, 다중 선택(`sel.nodeIds`, Ctrl/Shift+클릭·Ctrl+드래그 마퀴 — 수식키 없는 빈 캔버스 드래그는 팬), 그룹 드래그, Shift 정렬 스냅(`computeSnap`+가이드선), 3px 드래그, 0.5s 롱프레스, `_justDragged`, `cleanupFns` |
 | `§5-4 노드 자동 정렬` | `computeRadialLayout`, `tweenTo` |
 | `§6 AI 호출 헬퍼` | `callClaude/callGemini` → 모두 `apiPost`로 Worker 경유 |
 | `§5-9 AI 노드 생성` / `§5-10 AI 추천` / `§5-8 주인공 방문` | AI 기능. 프롬프트는 `buildCtx/worldSystem` 재사용 |

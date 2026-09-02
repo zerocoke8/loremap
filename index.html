@@ -496,7 +496,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
       <div class="guide gh" id="guideH" hidden></div>
     </div>
     <div id="linkBanner" hidden>🔗 관계를 연결할 대상 노드를 클릭하세요 <button id="linkCancel">ESC 취소</button></div>
-    <div id="pickBanner" hidden>📜 사건에 등장할 노드를 클릭·드래그로 선택하세요 — <b id="pickCount">0</b>개
+    <div id="pickBanner" hidden>📜 사건에 등장할 노드를 클릭·Ctrl+드래그로 선택하세요 — <b id="pickCount">0</b>개
       <button id="pickGo" class="go">✨ 생성</button><button id="pickCancel">ESC 취소</button></div>
     <div id="marquee" hidden></div>
     <div id="genOverlay" hidden><div class="spin"></div><div>AI가 노드를 생성하는 중…</div></div>
@@ -602,7 +602,7 @@ let sel = {nodeIds:[], edgeId:null};   // 다중 선택
 const isSel = id => sel.nodeIds.includes(id);
 function clearSel(){ sel = {nodeIds:[], edgeId:null}; }
 let evPick = {active:false, busy:false}; // AI 사건 생성 — 노드 선택 모드
-let spaceHeld = false;                   // Space+드래그 = 팬(편집 모드)
+let spaceHeld = false;                   // Space+드래그 = 팬 강제(Ctrl 마퀴보다 우선)
 let geomFast = false;                    // 드래그/트윈 중 곡선 k 캐시 사용
 let view = {z:0.8, px:0, py:0};
 let linkMode = {active:false, from:null};
@@ -2209,8 +2209,8 @@ function bindCanvasEvents(){
     if(e.target !== wrapEl && e.target !== worldEl && e.target !== edgeSvg) return;
     if(e.button === 2) return;
     closeCtx();
-    /* 편집 모드 + 마우스 좌클릭(Space 미사용) → 드래그 다중 선택. 그 외(보기 모드·터치·휠클릭·Space) → 팬 */
-    const useMarquee = editMode && e.pointerType !== 'touch' && e.button === 0 && !spaceHeld;
+    /* 편집 모드 + Ctrl(⌘)+마우스 좌클릭(Space 미사용) → 드래그 다중 선택(마퀴). 그 외(수식키 없음·보기 모드·터치·휠클릭·Space) → 팬 */
+    const useMarquee = editMode && e.pointerType !== 'touch' && e.button === 0 && (e.ctrlKey || e.metaKey) && !spaceHeld;
     if(useMarquee) startMarquee(e);
     else startPan(e);
   });
