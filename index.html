@@ -201,7 +201,7 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .e-line{fill:none;stroke:var(--ec, var(--edge));stroke-width:2}
 .e-line.parent{stroke:var(--ec, var(--edge-parent));stroke-width:2.4}
 .e-line.normal{stroke-dasharray:6 5;stroke-width:1.8}
-.e-hit{fill:none;stroke:rgba(0,0,0,0);stroke-width:16}
+.e-hit{fill:none;stroke:rgba(0,0,0,0);stroke-width:22;vector-effect:non-scaling-stroke}
 .e-lbl rect{fill:var(--glass);stroke:var(--ec, var(--border2));stroke-width:1;rx:7}
 .e-lbl text{fill:var(--text2);font-size:11.5px;font-family:'Noto Sans KR',sans-serif;text-anchor:middle}
 #edgeSvg g.preview .e-line{stroke:var(--gold2);animation:pulseLine 1.5s ease-in-out infinite}
@@ -600,6 +600,14 @@ function typeColorsAt(i){
     ? {border:`hsl(${h} ${sa}% ${Math.max(26, l - 16)}%)`, bg:`hsl(${h} ${sa}% ${l}% / .15)`}
     : {border:`hsl(${h} ${sa}% ${l}%)`, bg:`hsl(${h} ${Math.round(sa*.72)}% ${Math.round(l*.36)}% / .65)`};
 }
+/* 복사 이미지 전용 — 어떤 테마에서 복사하든 흰 배경 + 라이트 테마 색으로 고정한다.
+   붙여넣는 곳(문서·메신저)이 대개 흰 바탕이라 다크 테마 색은 읽기 어렵다. */
+function typeColorsLightAt(i){
+  const [h, sa, l] = typeHslAt(i);
+  return {border:`hsl(${h} ${sa}% ${Math.max(26, l - 16)}%)`, bg:`hsl(${h} ${sa}% ${l}% / .18)`};
+}
+const SHOT = {bg:'#ffffff', text:'#1a1a20', text2:'#5a5a68', edge:'#7c7c90'};
+
 /* 테마별 테두리·배경색 — 라이트는 진한 테두리+옅은 배경, 다크는 밝은 테두리+어두운 배경 */
 function typeColors(tab, key){ return typeColorsAt(typeIndexOf(tab, key)); }
 /* 새 타입 key — 라벨과 독립적인 안정 식별자 */
@@ -787,7 +795,13 @@ async function apiPost(path, body){
     if(editMode) setEditMode(false);
     throw new Error('세션이 만료되었습니다. 🔒 버튼으로 다시 잠금 해제해주세요');
   }
-  if(!r.ok) throw new Error(d?.error?.message || ('서버 오류 ' + r.status));
+  if(!r.ok){
+    /* 진단을 위해 상태 코드와 오류 종류까지 남긴다 — 메시지만으로는 원인을 못 좁힌다 */
+    const em = d?.error?.message || ('서버 오류 ' + r.status);
+    const et = d?.error?.type ? ' · ' + d.error.type : '';
+    console.error('API 오류', r.status, path, d);
+    throw new Error(em + ' (HTTP ' + r.status + et + ')');
+  }
   return d;
 }
 
@@ -2643,11 +2657,10 @@ async function copySelectionImage(tab, picked, edges){
     cv.width = W * SCALE; cv.height = H * SCALE;
     const ctx = cv.getContext("2d"); if(!ctx) return;
     ctx.scale(SCALE, SCALE);
-    ctx.translate(-minX, -minY);            // 배경은 칠하지 않는다 → 투명 PNG
-    const css = getComputedStyle(document.body);
-    const textCol = (css.getPropertyValue("--text") || "").trim() || "#e8e8f0";
-    const text2Col = (css.getPropertyValue("--text2") || "").trim() || "#a8a8bc";
-    const bg2Col = (css.getPropertyValue("--bg2") || "").trim() || "rgba(20,20,30,.9)";
+    ctx.translate(-minX, -minY);
+    ctx.fillStyle = SHOT.bg;                // 흰 배경 — 문서·메신저에 붙였을 때 그대로 읽힌다
+    ctx.fillRect(minX, minY, W, H);
+    const textCol = SHOT.text, text2Col = SHOT.text2, bg2Col = SHOT.bg;
 
     /* 연결선 — 화면에 그려진 d 속성(M x y Q cx cy x y)을 그대로 재현 */
     ctx.lineWidth = 1.6; ctx.lineCap = "round";
@@ -2658,8 +2671,8 @@ async function copySelectionImage(tab, picked, edges){
       if(!m) return;
       const x0 = +m[1], y0 = +m[2], qx = +m[3], qy = +m[4], x1 = +m[5], y1 = +m[6];
       ctx.strokeStyle = (edgeColorMode === "parent")
-        ? typeColors(tab, nodeById(tab, ed.from)?.type).border
-        : text2Col;
+        ? typeColorsLightAt(typeIndexOf(tab, nodeById(tab, ed.from)?.type)).border
+        : SHOT.edge;
       ctx.setLineDash(ed.isParent ? [] : [5, 4]);
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(qx, qy, x1, y1); ctx.stroke();
       ctx.setLineDash([]);
@@ -2679,7 +2692,7 @@ async function copySelectionImage(tab, picked, edges){
     /* 노드 카드 */
     picked.forEach(n => {
       const sz = sizeOf(n.id);
-      const tc = typeColors(tab, n.type);
+      const tc = typeColorsLightAt(typeIndexOf(tab, n.type));   // 화면 테마와 무관하게 라이트 색
       ctx.fillStyle = tc.bg; ctx.strokeStyle = tc.border; ctx.lineWidth = 1.5;
       drawRoundRect(ctx, n.x, n.y, sz.w, sz.h, R);
       ctx.fill(); ctx.stroke();
@@ -2707,7 +2720,7 @@ async function copySelectionImage(tab, picked, edges){
     if(!blob) return;
     try{
       await navigator.clipboard.write([new ClipboardItem({"image/png": blob})]);
-      toast("이미지도 클립보드에 담았습니다 (배경 투명)");
+      toast("이미지도 클립보드에 담았습니다 (흰 배경)");
     }catch(err){
       /* HTTPS 가 아니거나 브라우저가 막는 경우(Firefox 등) → 파일로 내려준다 */
       downloadBlob("worldmind-선택.png", blob);
@@ -2894,7 +2907,7 @@ async function runImport(raw, fileName){
           `도형: ${pre.nodes.map(n => n.name).join(", ")}\n` +
           `연결선:\n${pre.edges.map(e => `- ${e.from} → ${e.to}${e.label ? " (" + e.label + ")" : ""}`).join("\n") || "(없음)"}`
       : `기존 타입: ${types}\n\n아래 문서에서 세계관 요소를 뽑아 노드와 관계로 만들어라.\n\n"""\n${body}\n"""`;
-    const txt = await callClaude(sys, [{role:"user", content:user}], 8000);
+    const txt = await callClaude(sys, [{role:"user", content:user}], 4096);
     const data = parseAIJson(txt);
     if(!data || !Array.isArray(data.nodes) || !data.nodes.length){
       toast("가져올 노드를 찾지 못했습니다", true); return;

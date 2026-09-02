@@ -554,5 +554,50 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T("11-12 사라진 관계가 선택에 남지 않음", E("sel.edgeId") === null);
   }
 
+  /* ---- 12. 관계선 우클릭 → 관계 메뉴 ---- */
+  {
+    E("clearSel(); tabs[0].nodes.length=0; tabs[0].edges.length=0;");
+    E("tabs[0].nodes.push({id:'r1', type:'char', name:'가', desc:'', x:1000, y:1000}, {id:'r2', type:'item', name:'나', desc:'', x:1600, y:1000});");
+    E("tabs[0].edges.push({id:'re1', from:'r1', to:'r2', label:'소유', desc:'설명', isParent:false});");
+    E("setEditMode(true); commit(); renderAll();");
+    await wait(40);
+
+    const hit = doc.querySelector("#edgeSvg .e-hit");
+    T("12-1 관계선 히트 영역 존재", !!hit);
+    T("12-2 히트 폭이 화면 기준으로 고정(축소해도 얇아지지 않음)",
+      E("getComputedStyle(document.querySelector('#edgeSvg .e-hit')).getPropertyValue('vector-effect')").trim() === "non-scaling-stroke");
+
+    hit.dispatchEvent(new w.MouseEvent("contextmenu", {bubbles:true, cancelable:true, clientX:300, clientY:300}));
+    await wait(30);
+    const ctx = doc.getElementById("ctxMenu");
+    T("12-3 우클릭으로 관계 메뉴가 열림", ctx && !ctx.hidden, ctx && ctx.hidden);
+    const items = [...doc.querySelectorAll("#ctxMenu .ctx-item, #ctxMenu button, #ctxMenu div")].map(e => e.textContent).join(" | ");
+    T("12-4 메뉴에 관계 편집·삭제", items.includes("관계 편집") && items.includes("삭제"), items);
+
+    /* 라벨 우클릭도 같은 메뉴 */
+    E("closeCtx()");
+    const lbl = doc.querySelector("#edgeSvg .e-lbl");
+    if(lbl){
+      lbl.dispatchEvent(new w.MouseEvent("contextmenu", {bubbles:true, cancelable:true, clientX:320, clientY:300}));
+      await wait(30);
+      T("12-5 라벨 우클릭도 관계 메뉴", !doc.getElementById("ctxMenu").hidden);
+      E("closeCtx()");
+    }
+
+    /* 관계 편집을 눌러 모달이 뜨는지 */
+    hit.dispatchEvent(new w.MouseEvent("contextmenu", {bubbles:true, cancelable:true, clientX:300, clientY:300}));
+    await wait(30);
+    const edit = [...doc.querySelectorAll("#ctxMenu *")].find(e => e.textContent && e.textContent.trim().includes("관계 편집") && !e.querySelector("*"));
+    if(edit){
+      edit.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+      await wait(40);
+      T("12-6 관계 편집 모달이 열림", !!doc.querySelector(".ov #emLabel"));
+      T("12-7 기존 값이 채워짐", doc.querySelector(".ov #emLabel")?.value === "소유");
+      doc.querySelector(".ov [data-a=c]").click();
+    }else{
+      T("12-6 관계 편집 항목을 찾음", false, "메뉴 항목 탐색 실패");
+    }
+  }
+
   done();
 })();
