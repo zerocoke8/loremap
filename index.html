@@ -475,7 +475,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
 </div>
 
 <div id="topbar">
-  <button class="tb eo" id="btnAddNode">＋ 노드</button>
+  <button class="tb eo" id="btnAddNode" title="노드 추가 — 캔버스에서 Tab 을 누르면 커서 위치에 바로 생깁니다">＋ 노드</button>
   <button class="tb eo gold" id="btnAiGen">✨ AI 노드</button>
   <button class="tb eo" id="btnLayout">🔀 정렬</button>
   <button class="tb eo" id="btnUndo" title="실행 취소 (Ctrl+Z) / 다시 실행 (Ctrl+Shift+Z)">↩ 되돌리기</button>
@@ -2244,6 +2244,7 @@ function openNodeModal(node, presetPos){
       <div><label>설명</label><textarea id="nmDesc" rows="5" placeholder="이 요소에 대한 설정을 적어주세요">${escHtml(node?.desc || '')}</textarea></div>`,
     footer: `<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="s">저장</button>`
   });
+  setTimeout(() => ov.querySelector('#nmName')?.focus(), 60);   // 열자마자 이름부터 칠 수 있게
   ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
   ov.querySelector('[data-a=s]').onclick = () => {
     const type = ov.querySelector('#nmType').value;
@@ -2253,9 +2254,10 @@ function openNodeModal(node, presetPos){
     const t = curTab();
     if(isNew){
       const c = presetPos || viewCenterWorld();
+      const j = presetPos ? 0 : 30;          // 커서로 지정한 경우엔 흔들지 않는다
       const nn = {id:gid(), type, name, desc,
-                  x:Math.round(c.x - 100 + (Math.random()*60-30)),
-                  y:Math.round(c.y - 35  + (Math.random()*60-30)), _exp:false};
+                  x:Math.round(c.x - 100 + (Math.random()*j*2 - j)),
+                  y:Math.round(c.y - 35  + (Math.random()*j*2 - j)), _exp:false};
       t.nodes.push(nn);
       sel = {nodeIds:[nn.id], edgeId:null};
     }else{
@@ -2350,9 +2352,15 @@ function descendantsOf(id){
 function pointerWorld(){
   return lastPointer ? screenToWorld(lastPointer.x, lastPointer.y) : viewCenterWorld();
 }
-/* 모달·배너·컨텍스트 메뉴가 떠 있으면 캔버스 단축키를 삼키지 않는다 */
+/* 모달·배너·컨텍스트 메뉴·AI 미리보기가 떠 있으면 캔버스 단축키를 삼키지 않는다 */
 function shortcutBusy(){
-  return !!topModal() || linkMode.active || evPick.active || (ctxEl && !ctxEl.hidden);
+  return !!topModal() || linkMode.active || evPick.active
+      || (ctxEl && !ctxEl.hidden) || (aiPanelEl && !aiPanelEl.hidden);
+}
+/* Tab 가로채기 판정 — 포커스가 버튼·패널로 넘어간 뒤에는 표준 포커스 순회를 돌려준다 */
+function onCanvasFocus(){
+  const a = document.activeElement;
+  return !a || a === document.body || (wrapEl && wrapEl.contains(a));
 }
 /* Delete 키 — 선택이 여러 개면 한 번에 확인받는다 (하위 노드는 남긴다) */
 function askDeleteSelection(){
@@ -2364,7 +2372,7 @@ function askDeleteSelection(){
     confirmModal({
       title:'노드 삭제', danger:true, ok:`${ids.length}개 삭제`,
       html:`선택한 노드 <b>${ids.length}개</b>를 삭제할까요?<br>` +
-           `<span style="color:var(--text3)">연결된 관계도 함께 삭제됩니다. 하위 노드는 남습니다.</span>`,
+           `<span style="color:var(--text3)">연결된 관계도 함께 삭제됩니다. 선택하지 않은 하위 노드는 남습니다.</span>`,
       onOk:() => doDeleteNodes(ids)
     });
     return;
@@ -2378,6 +2386,7 @@ function doDeleteNodes(ids){
   t.nodes = t.nodes.filter(n => !set.has(n.id));
   t.edges = t.edges.filter(e => !set.has(e.from) && !set.has(e.to));
   sel.nodeIds = sel.nodeIds.filter(id => !set.has(id));
+  if(sel.edgeId && !t.edges.some(e => e.id === sel.edgeId)) sel.edgeId = null;   // 사라진 관계가 선택에 남지 않게
   commit(); renderAll();
   toast('삭제했습니다');
 }
@@ -4260,22 +4269,35 @@ function bindStaticUI(){
   $('#zOut').onclick = () => { const r = wrapEl.getBoundingClientRect(); zoomAt(r.width/2, r.height/2, 1/1.25); };
   $('#zFit').onclick = zoomFit;
 
+  /* ⚠ 노드·엣지의 pointerdown 이 stopPropagation 하므로 버블 단계로는 못 잡는다 —
+     Alt 를 누른 채 노드를 드래그하면 관계 추가 모드로 새는 것을 캡처 단계에서 막는다 */
+  document.addEventListener('pointerdown', () => { altSolo = false; }, true);
   document.addEventListener('pointerdown', e => {
-    altSolo = false;
     if(!ctxEl.hidden && !ctxEl.contains(e.target)) closeCtx();
   });
   const typing = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
   document.addEventListener('keydown', e => {
-    /* Alt 단독 입력 판별 — 다른 키가 끼면(Alt+Tab 등) 취소 */
-    if(e.key === 'Alt'){ if(!e.repeat) altSolo = true; }
+    /* Alt 단독 입력 판별 — 다른 키가 끼거나(Alt+Tab) 수식키를 동반하면 취소한다.
+       Shift+Alt 는 윈도우 키보드 레이아웃 전환, Ctrl+Alt 는 AltGr 이라 오발동이 잦다.
+       실제로 발동할 상황에서만 preventDefault 해 윈도우 메뉴바 활성화를 막는다. */
+    if(e.key === 'Alt'){
+      if(e.ctrlKey || e.shiftKey || e.metaKey) altSolo = false;
+      else if(!e.repeat){
+        altSolo = true;
+        if(!typing() && !shortcutBusy() && sel.nodeIds.length === 1) e.preventDefault();
+      }
+    }
     else altSolo = false;
 
     if(e.key === ' ' && !typing()) spaceHeld = true;
 
-    /* §5-2 캔버스 단축키 — Tab: 커서 위치에 노드 추가 / Delete: 선택 삭제 */
-    if(e.key === 'Tab' && !typing() && !shortcutBusy() && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey){
+    /* §5-2 캔버스 단축키 — Tab: 커서 위치에 노드 추가 / Delete·Backspace: 선택 삭제
+       ⚠ Tab 은 편집 모드이고 캔버스에 포커스가 있을 때만 가로챈다. 그러지 않으면 툴바·패널
+          버튼으로 가는 정방향 Tab 순회가 끊기고, 보기 전용에서는 순손실이 된다. */
+    if(e.key === 'Tab' && editMode && onCanvasFocus() && !typing() && !shortcutBusy()
+       && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey){
       e.preventDefault();
-      openNodeModal(null, pointerWorld());   // 보기 모드면 reqEdit가 안내 토스트를 띄운다
+      openNodeModal(null, pointerWorld());
       return;
     }
     /* Ctrl+C — 선택 영역을 이미지(외부용) + 노드/관계(내부용)로 함께 복사 */
@@ -4285,8 +4307,9 @@ function bindStaticUI(){
     if((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && !typing() && !shortcutBusy() && (e.key === 'v' || e.key === 'V')){
       if(clipBuf){ e.preventDefault(); pasteClip(); return; }
     }
-    if(e.key === 'Delete' && !typing() && !shortcutBusy() && (sel.nodeIds.length || sel.edgeId)){
-      e.preventDefault();
+    if((e.key === 'Delete' || e.key === 'Backspace') && !typing() && !shortcutBusy()
+       && (sel.nodeIds.length || sel.edgeId)){
+      e.preventDefault();                    // 맥 노트북에는 Delete 키가 없어 Backspace 도 받는다
       askDeleteSelection();
       return;
     }
@@ -4311,8 +4334,9 @@ function bindStaticUI(){
     /* Alt 단독 탭 → 선택한 노드에서 관계 추가 시작(대상 노드를 클릭해 연결) */
     if(e.key === 'Alt'){
       const solo = altSolo; altSolo = false;
-      if(solo && !typing() && !shortcutBusy() && sel.nodeIds.length === 1) startLink(sel.nodeIds[0]);
-    }
+      if(solo && !e.ctrlKey && !e.shiftKey && !e.metaKey
+         && !typing() && !shortcutBusy() && sel.nodeIds.length === 1) startLink(sel.nodeIds[0]);
+    }else altSolo = false;                   // Alt 를 누른 채 다른 키를 뗐다면 단독이 아니다
   });
   window.addEventListener('blur', () => { spaceHeld = false; altSolo = false; });
 }

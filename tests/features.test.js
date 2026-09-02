@@ -207,7 +207,7 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
   {
     const key = (k, opt) => doc.dispatchEvent(new w.KeyboardEvent('keydown', Object.assign({key:k, bubbles:true, cancelable:true}, opt)));
     const keyUp = (k, opt) => doc.dispatchEvent(new w.KeyboardEvent('keyup', Object.assign({key:k, bubbles:true, cancelable:true}, opt)));
-    E("clearSel(); tabs[0].nodes.length = 0; tabs[0].edges.length = 0;");
+    E("clearSel(); tabs[0].nodes.length = 0; tabs[0].edges.length = 0; setEditMode(true);");
     E("tabs[0].nodes.push({id:'k1', type:'char', name:'주인공', desc:'', x:1000, y:1000}, {id:'k2', type:'space', name:'탑', desc:'', x:1600, y:1000});");
     E("view.z=1; view.px=0; view.py=0; applyView(); renderAll();");
     await wait(30);
@@ -226,7 +226,7 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     const made = E("tabs[0].nodes.find(n=>n.name==='커서 노드')");
     T('7-3 노드가 실제로 추가됨', !!made);
     /* 커서(640,480) 월드 좌표 기준으로 배치 — 카드 중앙이 그 근처(무작위 ±30) */
-    T('7-4 커서 위치 근처에 생성', made && Math.abs((made.x + 100) - 640) <= 31 && Math.abs((made.y + 35) - 480) <= 31, made);
+    T('7-4 커서 위치에 정확히 생성(지터 없음)', made && Math.abs((made.x + 100) - 640) <= 1 && Math.abs((made.y + 35) - 480) <= 1, made);
     E("tabs[0].nodes = tabs[0].nodes.filter(n=>n.name!=='커서 노드'); clearSel(); renderAll();");
     await wait(20);
 
@@ -475,6 +475,83 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
       [...doc.querySelectorAll(".toast.err")].some(t => t.textContent.includes("붙여넣어")));
     doc.querySelector(".ov [data-a=c]").click();
     w.fetch = origFetch;
+  }
+
+  /* ---- 11. 단축키 검토 지적 반영분 ---- */
+  {
+    const key = (k, opt, el) => {
+      const ev = new w.KeyboardEvent("keydown", Object.assign({key:k, bubbles:true, cancelable:true}, opt));
+      (el || doc).dispatchEvent(ev); return ev;
+    };
+    const keyUp = (k, opt) => doc.dispatchEvent(new w.KeyboardEvent("keyup", Object.assign({key:k, bubbles:true, cancelable:true}, opt)));
+    E("clearSel(); tabs[0].nodes.length=0; tabs[0].edges.length=0;");
+    E("tabs[0].nodes.push({id:'s1', type:'char', name:'가', desc:'', x:1000, y:1000}, {id:'s2', type:'item', name:'나', desc:'', x:1400, y:1000});");
+    E("setEditMode(true); commit(); renderAll(); clearSel();");
+    await wait(30);
+
+    /* Tab — 툴바 버튼에 포커스가 있으면 가로채지 않는다 */
+    doc.getElementById("btnSettings").focus();
+    const evBtn = key("Tab");
+    await wait(20);
+    T("11-1 버튼 포커스 시 Tab 은 통과", evBtn.defaultPrevented === false && !doc.querySelector(".ov #nmName"));
+    doc.getElementById("btnSettings").blur();
+
+    /* Tab — 보기 전용에서는 가로채지 않는다 */
+    E("setEditMode(false)");
+    const evView = key("Tab");
+    await wait(20);
+    T("11-2 보기 전용에서 Tab 은 통과", evView.defaultPrevented === false && !doc.querySelector(".ov #nmName"));
+    E("setEditMode(true)");
+
+    /* Tab — 캔버스 포커스 + 편집 모드면 그대로 동작 */
+    const evOk = key("Tab");
+    await wait(100);   // openModal 자동 포커스(40ms) 뒤 이름 칸으로 옮기는 60ms 까지 기다린다
+    T("11-3 편집 모드 + 캔버스 포커스면 정상 동작", evOk.defaultPrevented === true && !!doc.querySelector(".ov #nmName"));
+    T("11-4 모달 최초 포커스는 이름 칸", doc.activeElement && doc.activeElement.id === "nmName");
+    doc.querySelector(".ov [data-a=c]").click();
+    await wait(20);
+
+    /* Backspace 로도 삭제 (맥 노트북) */
+    E("sel = {nodeIds:['s2'], edgeId:null}; renderAll();");
+    key("Backspace");
+    await wait(30);
+    T("11-5 Backspace 도 삭제 확인창", !!doc.querySelector(".ov") && E("tabs[0].nodes.some(n=>n.id==='s2')"));
+    doc.querySelector(".ov [data-a=k]").click();
+    await wait(30);
+    T("11-6 확인하면 삭제", !E("tabs[0].nodes.some(n=>n.id==='s2')"));
+    E("tabs[0].nodes.push({id:'s2', type:'item', name:'나', desc:'', x:1400, y:1000}); commit(); renderAll();");
+    await wait(20);
+
+    /* Alt 오발동 방지 — 수식키를 먼저 누른 조합 */
+    E("sel = {nodeIds:['s1'], edgeId:null}; exitLink();");
+    key("Alt", {altKey:true, shiftKey:true}); keyUp("Alt", {shiftKey:true});
+    await wait(20);
+    T("11-7 Shift+Alt(레이아웃 전환)로는 발동 안 함", E("linkMode.active") === false);
+    key("Alt", {altKey:true, ctrlKey:true}); keyUp("Alt", {ctrlKey:true});
+    await wait(20);
+    T("11-8 Ctrl+Alt(AltGr)로는 발동 안 함", E("linkMode.active") === false);
+
+    /* Alt 를 누른 채 노드를 누르면(드래그) 발동하지 않는다 — 캡처 단계 정리 */
+    key("Alt", {altKey:true});
+    doc.querySelector('[data-id="s1"]').dispatchEvent(new w.MouseEvent("pointerdown", {bubbles:true, clientX:100, clientY:100, button:0, altKey:true}));
+    w.dispatchEvent(new w.MouseEvent("pointerup", {clientX:100, clientY:100}));
+    keyUp("Alt");
+    await wait(20);
+    T("11-9 Alt+노드 클릭·드래그로는 발동 안 함", E("linkMode.active") === false);
+
+    /* 정상 경로는 여전히 동작 */
+    E("_justDragged = false; sel = {nodeIds:['s1'], edgeId:null};");
+    const evAlt = key("Alt", {altKey:true}); keyUp("Alt");
+    await wait(20);
+    T("11-10 Alt 단독 탭은 정상 발동", E("linkMode.active") === true);
+    T("11-11 발동 시 메뉴바 제스처 차단", evAlt.defaultPrevented === true);
+    E("exitLink()");
+
+    /* 노드를 지우면 선택에 남은 관계 id 도 정리된다 */
+    E("tabs[0].edges.push({id:'se1', from:'s1', to:'s2', label:'', desc:'', isParent:false});");
+    E("sel = {nodeIds:[], edgeId:'se1'}; doDeleteNodes(['s2']);");
+    await wait(20);
+    T("11-12 사라진 관계가 선택에 남지 않음", E("sel.edgeId") === null);
   }
 
   done();
