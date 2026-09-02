@@ -2,7 +2,8 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs');
 
 const html = fs.readFileSync(require('path').join(__dirname,'..','index.html'), 'utf8')
-  .replace(/<script src="https:[^"]+"><\/script>/g, '');
+  .replace(/<script src="https:[^"]+"><\/script>/g, '')
+  .replace('const ORPHAN_GRACE_MS = 15000;', 'const ORPHAN_GRACE_MS = 60;');   // 테스트에서는 고아 정리 유예를 짧게
 
 let pass = 0, fail = 0;
 const T = (name, cond, extra) => {
@@ -26,8 +27,9 @@ function makeFirebaseStub(initialDb, writeLog){
     }
     return cur === undefined ? null : cur;
   }
+  let silent = false;              // update 내부 적용은 개별 로그를 남기지 않는다
   function setPath(p, v){
-    writeLog.push({path:p, del:v === undefined});
+    if(!silent) writeLog.push({path:p, del:v === undefined});
     const ss = segs(p);
     let cur = db;
     for(let i = 0; i < ss.length - 1; i++){
@@ -39,6 +41,8 @@ function makeFirebaseStub(initialDb, writeLog){
     scheduleProcess();
   }
   let failing = false;             // 규칙·권한으로 쓰기가 막힌 상황 주입용
+  let failPath = null;             // 특정 경로만 거부 (반쪽 삭제 재현용)
+  const denied = p => failing || (failPath && failPath(p));
   let scheduled = false;
   function scheduleProcess(){
     if(scheduled) return;
@@ -82,8 +86,18 @@ function makeFirebaseStub(initialDb, writeLog){
         const i = listeners.findIndex(L => L.path === path && L.evt === evt && L.cb === cb);
         if(i >= 0) listeners.splice(i, 1);
       },
-      set: v => { if(failing) return Promise.reject(new Error('PERMISSION_DENIED')); setPath(path, v); return Promise.resolve(); },
-      remove: () => { if(failing) return Promise.reject(new Error('PERMISSION_DENIED')); setPath(path, undefined); return Promise.resolve(); }
+      set: v => { if(denied(path)) return Promise.reject(new Error('PERMISSION_DENIED')); setPath(path, v); return Promise.resolve(); },
+      remove: () => { if(denied(path)) return Promise.reject(new Error('PERMISSION_DENIED')); setPath(path, undefined); return Promise.resolve(); },
+      /* RTDB 다중 경로 update: 하나라도 거부되면 아무것도 적용하지 않는다(원자적) */
+      update: obj => {
+        const full = Object.keys(obj).map(k => (path ? path + '/' : '') + k);
+        if(full.some(denied)) return Promise.reject(new Error('PERMISSION_DENIED'));
+        writeLog.push({path:'UPDATE', keys:full});
+        silent = true;
+        try{ full.forEach((p, i) => { const v = obj[Object.keys(obj)[i]]; setPath(p, v === null ? undefined : v); }); }
+        finally{ silent = false; }
+        return Promise.resolve();
+      }
     };
   }
   return {
@@ -92,6 +106,7 @@ function makeFirebaseStub(initialDb, writeLog){
     },
     getPath, setPath,
     setFailing: v => { failing = v; },
+    setFailPath: fn => { failPath = fn; },
     _db: () => db
   };
 }
@@ -212,6 +227,82 @@ function makeFirebaseStub(initialDb, writeLog){
   await wait(80);
   T('G4 스냅샷 롤백 → 다음 commit에서 재시도 성공', stub.getPath('worldmind/tabs/i500/nodes/iVIEW').name === '실패할 이름');
   T('G5 복구되면 상태 칩도 돌아옴', doc.getElementById('syncTxt').textContent === '실시간 동기화');
+
+  /* --- H. 탭 삭제는 원자적 — 반쪽 상태(목록에만 남는 고아)를 만들지 않는다 --- */
+  E("tabs.push(sanitizeTab({id:'iDEL', title:'지울 탭', nodes:[{id:'iDELn', type:'item', name:'짐', desc:'', x:2100, y:2100}], edges:[], events:[]})); renderTabs(); commit();");
+  stub.setPath('worldmind/tabs/iDEL', {meta:{title:'iDEL', worldPrompt:'', _w:'sOTHER'}, nodes:{iDELn:{type:'item', name:'짐', desc:'', x:2100, y:2100, _w:'sOTHER'}}, edges:{}, events:{}});
+  await wait(80);
+  T('H0 준비: 목록·내용이 서버에 모두 존재', (stub.getPath('worldmind/tabList') || []).some(x => x.id === 'iDEL') && !!stub.getPath('worldmind/tabs/iDEL'));
+  writeLog.length = 0;
+  E("askDeleteTab(tabs.find(t=>t.id==='iDEL'))");
+  doc.querySelector('.ov [data-a=k], .ov .btn.danger, .ov [data-a=o]')?.click();
+  await wait(120);
+  const upd = writeLog.filter(w => w.path === 'UPDATE');
+  T('H1 삭제가 원자적 update 1회', upd.length === 1 && upd[0].keys.includes('worldmind/tabs/iDEL') && upd[0].keys.includes('worldmind/tabList'), writeLog);
+  T('H2 tabList 단독 set 없음', writeLog.filter(w => w.path === 'worldmind/tabList').length === 0, writeLog);
+  T('H3 서버에서 목록·내용 모두 제거', !(stub.getPath('worldmind/tabList')||[]).some(x=>x.id==='iDEL') && !stub.getPath('worldmind/tabs/iDEL'));
+
+  /* --- I. 삭제 실패 시 반쪽 상태 대신 통째로 되돌린다 --- */
+  E("tabs.push(sanitizeTab({id:'iDEL2', title:'지울 탭2', nodes:[{id:'iDEL2n', type:'item', name:'짐2', desc:'', x:2200, y:2200}], edges:[], events:[]})); renderTabs(); commit();");
+  stub.setPath('worldmind/tabs/iDEL2', {meta:{title:'iDEL2', worldPrompt:'', _w:'sOTHER'}, nodes:{iDEL2n:{type:'item', name:'짐', desc:'', x:2100, y:2100, _w:'sOTHER'}}, edges:{}, events:{}});
+  await wait(80);
+  T('I0 준비: 목록·내용이 서버에 모두 존재', (stub.getPath('worldmind/tabList') || []).some(x => x.id === 'iDEL2') && !!stub.getPath('worldmind/tabs/iDEL2'));
+  stub.setFailPath(p => p === 'worldmind/tabList' || p === 'worldmind/tabs/iDEL2');
+  E("askDeleteTab(tabs.find(t=>t.id==='iDEL2'))");
+  doc.querySelector('.ov [data-a=k], .ov .btn.danger, .ov [data-a=o]')?.click();
+  await wait(120);
+  T('I1 실패하면 탭이 되살아남', E("tabs.some(t=>t.id==='iDEL2')"));
+  T('I2 서버도 삭제 전 그대로', (stub.getPath('worldmind/tabList')||[]).some(x=>x.id==='iDEL2') && !!stub.getPath('worldmind/tabs/iDEL2'));
+  T('I3 되돌림을 사용자에게 알림', [...doc.querySelectorAll('.toast.err')].some(t => t.textContent.includes('되돌렸습니다')));
+  stub.setFailPath(null);
+  E("askDeleteTab(tabs.find(t=>t.id==='iDEL2'))");
+  doc.querySelector('.ov [data-a=k], .ov .btn.danger, .ov [data-a=o]')?.click();
+  await wait(120);
+  T('I4 재시도하면 정상 삭제', !E("tabs.some(t=>t.id==='iDEL2')") && !stub.getPath('worldmind/tabs/iDEL2'));
+
+  /* --- J. 이미 생긴 고아 치유: tabList 에만 남은 탭이 빈 탭으로 되살아나지 않는다 --- */
+  /*    (사용자 보고 증상 — 탭 삭제가 반쪽만 반영된 서버 상태로 새로 부팅) */
+  const bootWith = (server, pre) => {
+    const st = makeFirebaseStub(server, []);
+    const d = new JSDOM(html, {runScripts:'dangerously', url:'https://localhost/', beforeParse(w){
+      w.localStorage.setItem('wm_fbcfg', '{"apiKey":"x","databaseURL":"https://t.firebasedatabase.app"}');
+      w.sessionStorage.setItem('wm_tok', 'TOK');
+      w.sessionStorage.setItem('wm_tok_exp', String(Date.now() + 3600e3));   // 편집 모드로 복원 → 청소 대상
+      w.firebase = st.firebase;
+      w.requestAnimationFrame = cb => setTimeout(() => cb(w.performance.now()), 16);
+      w.PointerEvent = w.MouseEvent;
+      pre && pre(w, st);
+    }});
+    return {st, win: d.window, E: c => d.window.eval(c)};
+  };
+  const liveTab = {meta:{title:'살아있는 탭', worldPrompt:'', _w:'sOTHER'},
+    nodes:{a1:{type:'world', name:'세계', desc:'', x:2000, y:2000, _w:'sOTHER'}}, edges:{}, events:{}};
+
+  {
+    const {st, E: EJ} = bootWith({
+      'worldmind': {tabList:[{id:'tA', title:'살아있는 탭'}, {id:'tGHOST', title:'유령 탭'}], tabs:{tA: liveTab}},
+      '.info': {connected: true}
+    });
+    await wait(400);
+    T('J1 편집 모드 복원 확인', EJ('editMode') === true);
+    T('J2 고아 탭이 정리됨', EJ("tabs.map(t=>t.id).join(',')") === 'tA', EJ("tabs.map(t=>t.id+':'+t.nodes.length).join(',')"));
+    T('J3 서버 tabList 도 교정됨', (st.getPath('worldmind/tabList')||[]).map(x=>x.id).join(',') === 'tA');
+    T('J4 살아있는 탭의 내용은 보존', EJ('tabs[0].nodes.length') === 1);
+  }
+
+  /* --- K. 오탐 방지: 다른 기기가 방금 만든 탭(내용이 늦게 도착)은 지우지 않는다 --- */
+  {
+    const {st, E: EK} = bootWith({
+      'worldmind': {tabList:[{id:'tA', title:'살아있는 탭'}, {id:'tNEW', title:'막 만든 탭'}], tabs:{tA: liveTab}},
+      '.info': {connected: true}
+    });
+    setTimeout(() => st.setPath('worldmind/tabs/tNEW', {meta:{title:'막 만든 탭', worldPrompt:'', _w:'sOTHER'},
+      nodes:{n1:{type:'char', name:'늦게 온 노드', desc:'', x:2100, y:2100, _w:'sOTHER'}}, edges:{}, events:{}}), 20);
+    await wait(400);
+    T('K1 늦게 도착한 탭은 지우지 않음', EK("tabs.map(t=>t.id).sort().join(',')") === 'tA,tNEW', EK("tabs.map(t=>t.id).join(',')"));
+    T('K2 늦게 온 내용이 채워짐', EK("(tabs.find(t=>t.id==='tNEW')||{nodes:[]}).nodes.length") === 1);
+    T('K3 서버 tabList 는 건드리지 않음', (st.getPath('worldmind/tabList')||[]).map(x=>x.id).sort().join(',') === 'tA,tNEW');
+  }
 
   T('전 과정 예외 없음', errs.length === 0, errs);
   console.log('\n결과: ' + pass + ' 통과 / ' + fail + ' 실패');
