@@ -148,5 +148,60 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T('ESC로 선택 모드 취소', E('evPick.active') === false);
   }
 
+  /* ---- 6. 관계 상세 카드 클릭 회귀 + 마퀴 합집합 ---- */
+  {
+    E("tabs[0].nodes[0].x=1000; tabs[0].nodes[0].y=1000; tabs[0].nodes[1].x=1700; tabs[0].nodes[1].y=1000; tabs[0].nodes[2].x=1000; tabs[0].nodes[2].y=1500; clearSel(); renderAll()");
+    await wait(30);
+    const nodeCount = () => doc.querySelectorAll('.node').length;
+    T('회귀 전제: 노드 3개 렌더', nodeCount() === 3);
+
+    /* 관계 클릭 → 상세 카드. sel.nodeId(단수) 오타 시절엔 renderNodes가 innerHTML을 비운 직후 죽어 노드가 전부 사라졌다 */
+    E('_justDragged = false');
+    doc.querySelector('#edgeSvg .e-hit').dispatchEvent(new w.MouseEvent('click', {bubbles:true}));
+    await wait(30);
+    T('관계 클릭 후에도 노드가 남아 있음', nodeCount() === 3);
+    T('관계 선택 + 상세 카드 표시', E("sel.edgeId") === 'e1' && !!doc.querySelector('.e-detail'));
+    T('sel.nodeIds가 배열로 유지됨', Array.isArray(E('sel.nodeIds')) && E('sel.nodeIds.length') === 0);
+
+    E('_justDragged = false');
+    doc.querySelector('.e-detail').dispatchEvent(new w.MouseEvent('click', {bubbles:true}));
+    await wait(30);
+    T('상세 카드 클릭으로 닫힘 + 노드 유지', E('sel.edgeId') === null && !doc.querySelector('.e-detail') && nodeCount() === 3);
+
+    /* 마퀴 합집합: 한 번에 하나씩 골라도 누적된다 */
+    E('view.z=0.2; view.px=-100; view.py=-100; applyView()');
+    const s = (wx, wy) => E(`(function(){return {x:${wx}*view.z+view.px, y:${wy}*view.z+view.py};})()`);
+    const cw = doc.getElementById('cwrap');
+    const drag = (p1, p2, mod) => {
+      const d = new w.MouseEvent('pointerdown', Object.assign({bubbles:true, clientX:p1.x, clientY:p1.y, button:0}, mod));
+      Object.defineProperty(d, 'target', {value: cw});
+      cw.dispatchEvent(d);
+      w.dispatchEvent(new w.MouseEvent('pointermove', {clientX:p2.x, clientY:p2.y}));
+      w.dispatchEvent(new w.MouseEvent('pointerup', {clientX:p2.x, clientY:p2.y}));
+    };
+    drag(s(950, 950), s(1350, 1150), {ctrlKey:true});
+    await wait(30);
+    T('첫 마퀴: a 선택', E("sel.nodeIds.join(',')") === 'a');
+    drag(s(950, 1450), s(1350, 1650), {ctrlKey:true});
+    await wait(30);
+    T('두 번째 마퀴가 기존 선택에 합쳐짐 (a,c)', E("sel.nodeIds.slice().sort().join(',')") === 'a,c');
+    T('합집합 선택 클래스 2개', doc.querySelectorAll('.node.sel').length === 2);
+    drag(s(1650, 950), s(1900, 1150), {metaKey:true});
+    await wait(30);
+    T('⌘+드래그도 같은 경로로 누적 (a,b,c)', E("sel.nodeIds.slice().sort().join(',')") === 'a,b,c');
+    drag(s(950, 950), s(1350, 1150), {ctrlKey:true});
+    await wait(30);
+    T('이미 선택된 노드를 다시 감싸도 중복 없음', E('sel.nodeIds.length') === 3 && E('new Set(sel.nodeIds).size') === 3);
+
+    /* 무이동 클릭: Ctrl은 선택 유지, 맨클릭은 해제 */
+    const p0 = s(1500, 1900);
+    drag(p0, p0, {ctrlKey:true});
+    await wait(30);
+    T('Ctrl+클릭(무이동)은 선택 유지', E('sel.nodeIds.length') === 3);
+    drag(p0, p0, {});
+    await wait(30);
+    T('수식키 없는 빈 캔버스 클릭은 전체 해제', E('sel.nodeIds.length') === 0);
+  }
+
   done();
 })();

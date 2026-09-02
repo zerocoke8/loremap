@@ -42,7 +42,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§2-2 / §2-3 / §3 Firebase` | `initFB`, `migrateIfOld`, `attachTab`, `handleRemoteItem`, `fbSyncActive`(diff 전송), `pushAllToFB` |
 | `캔버스 뷰포트` / `렌더 파이프라인` | 팬·줌, `renderAll = renderNodes + renderEdges` (각 1회 원칙) |
 | `연결선 지오메트리` | `buildObstacles`, `edgePath`(2차 베지어), `chooseCurve`(노드 회피 굴곡 선택), `setEdgeGeom` |
-| `§5-2 노드 상호작용` | 클릭 펼침, 다중 선택(`sel.nodeIds`, Ctrl/Shift+클릭·Ctrl+드래그 마퀴 — 수식키 없는 빈 캔버스 드래그는 팬), 그룹 드래그, Shift 정렬 스냅(`computeSnap`+가이드선), 3px 드래그, 0.5s 롱프레스, `_justDragged`, `cleanupFns` |
+| `§5-2 노드 상호작용` | 클릭 펼침, 다중 선택(`sel.nodeIds`, Ctrl/Shift+클릭·Ctrl+드래그 마퀴 — 기존 선택에 합집합 누적, 수식키 없는 빈 캔버스 드래그는 팬), 그룹 드래그, Shift 정렬 스냅(`computeSnap`+가이드선), 3px 드래그, 0.5s 롱프레스, `_justDragged`, `cleanupFns` |
 | `§5-4 노드 자동 정렬` | `computeRadialLayout`, `tweenTo` |
 | `§6 AI 호출 헬퍼` | `callClaude/callGemini` → 모두 `apiPost`로 Worker 경유 |
 | `§5-9 AI 노드 생성` / `§5-10 AI 추천` / `§5-8 주인공 방문` | AI 기능. 프롬프트는 `buildCtx/worldSystem` 재사용 |
@@ -59,6 +59,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - 되돌리기는 `commit()`마다 `recordUndo()`가 직전 상태를 적재하는 구조다. 새 데이터 변형 기능은 반드시 마지막에 `commit()`을 부르면 자동으로 되돌리기 대상이 된다. 되돌리기 적용(`applySnapshot`)은 탭이 바뀌면 `attachTab(id, false)`(서버로 덮지 않음)를 쓴다.
 - 연결선은 노드 테두리에서 절단된다(`trimQuad`, 이분 탐색). 노드 크기·위치를 바꾸는 코드는 `renderEdges()` 또는 `updateEdgesFor()`를 다시 불러야 절단이 맞는다.
 - AI 사건 생성은 노드 선택 모드(`evPick`, `#pickBanner`)로 동작한다. 선택 모드 중 노드 클릭은 펼침이 아니라 선택 토글이다.
+- `sel`은 항상 `{nodeIds:배열, edgeId}` 형태여야 한다. `nodeId`(단수)로 잘못 쓰면 `isSel`이 `undefined.includes`로 죽고, `renderNodes`는 `nodesEl.innerHTML=''` 직후 예외로 중단되어 **노드가 화면에서 전부 사라진다**(새로고침 전까지). 선택 해제는 `clearSel()`을 쓸 것.
 - 최상위 `let/const/function`은 `window` 속성이 아니다. 테스트에서 상태는 `win.eval('tabs')`처럼 접근한다 (`tests/helpers.js`의 `E`).
 - `hidden` 속성이 있는 요소에 CSS `display:flex`를 주면 숨김이 깨진다. 전역 규칙 `[hidden]{display:none!important}`가 있으니 유지할 것.
 - `renderNodes`가 `nodesEl.innerHTML`을 비우므로 노드 레이어에 넣는 요소(관계 상세 카드 `.e-detail`)는 `renderEdges`에서 다시 만든다.

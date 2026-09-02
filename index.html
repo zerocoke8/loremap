@@ -1925,7 +1925,7 @@ function wireEdge(el, ed){
   el.addEventListener('click', e => {
     e.stopPropagation();
     if(_justDragged){ _justDragged = false; return; }
-    sel = (sel.edgeId === ed.id) ? {nodeId:null, edgeId:null} : {nodeId:null, edgeId:ed.id};
+    sel = (sel.edgeId === ed.id) ? {nodeIds:[], edgeId:null} : {nodeIds:[], edgeId:ed.id};
     renderAll();
   });
   el.addEventListener('contextmenu', e => {
@@ -1940,7 +1940,7 @@ function wireEdgeDetail(el, ed){
   el.addEventListener('click', e => {
     e.stopPropagation();
     if(_justDragged){ _justDragged = false; return; }
-    sel = {nodeId:null, edgeId:null};
+    sel = {nodeIds:[], edgeId:null};
     renderAll();
   });
   el.addEventListener('pointerdown', e => { if(e.button !== 2) e.stopPropagation(); });
@@ -2258,7 +2258,7 @@ function bindCanvasEvents(){
       window.removeEventListener('pointermove', mv);
       window.removeEventListener('pointerup', up);
       marqueeEl.hidden = true;
-      if(!moved){ bgClickClear(); return; }
+      if(!moved) return;                    // Ctrl+클릭(무이동)은 선택 유지 — 누적 중 실수로 지워지지 않게
       const x = ev.clientX - r0.left, y = ev.clientY - r0.top;
       const a = screenToWorld(Math.min(sx, x), Math.min(sy, y));
       const b = screenToWorld(Math.max(sx, x), Math.max(sy, y));
@@ -2267,7 +2267,7 @@ function bindCanvasEvents(){
         const ns = nodeSizes[nd.id] || {w:200, h:70};
         return nd.x < b.x && nd.x + ns.w > a.x && nd.y < b.y && nd.y + ns.h > a.y;
       }).map(nd => nd.id);
-      sel = {nodeIds:hit, edgeId:null};
+      sel = {nodeIds:[...new Set([...sel.nodeIds, ...hit])], edgeId:null};   // 기존 선택에 합집합 누적(Ctrl+클릭과 같은 '추가' 의미)
       renderAll();
       if(evPick.active) updatePickBanner();
     };
