@@ -162,7 +162,12 @@ function makeFirebaseStub(initialDb, writeLog){
   await wait(60);
   T('B1 변경 노드만 기록', stub.getPath('worldmind/tabs/i500/nodes/i502').name === '개명된 용사');
   const dataWrites = writeLog.filter(w => !w.path.endsWith('tabList'));
-  T('B2 diff — 다른 항목은 미기록', dataWrites.length === 1 && dataWrites[0].path === 'worldmind/tabs/i500/nodes/i502', writeLog);
+  const itemWrites = dataWrites.filter(w => !w.path.endsWith('/meta'));
+  T('B2 diff — 변경 항목 외 미기록', itemWrites.length === 1 && itemWrites[0].path === 'worldmind/tabs/i500/nodes/i502', writeLog);
+  /* 구 데이터에는 meta.nodeTypes 가 없어 첫 동기화 때 한 번만 승급 기록된다 */
+  const meta = stub.getPath('worldmind/tabs/i500/meta');
+  T('B2-1 nodeTypes 승급 — meta 1회 기록', dataWrites.filter(w => w.path.endsWith('/meta')).length <= 1, writeLog);
+  T('B2-2 서버 meta 에 기본 타입 7종 기록', Array.isArray(meta.nodeTypes) && meta.nodeTypes.length === 7 && meta.nodeTypes[0].key === 'world', meta.nodeTypes);
   T('B3 세션 _w 포함', stub.getPath('worldmind/tabs/i500/nodes/i502')._w === E('FB_SID'));
 
   /* --- C. 원격 수신 / 에코 / 원격 삭제 --- */

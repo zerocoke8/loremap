@@ -287,5 +287,54 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     ta.blur();
   }
 
+  /* ---- 8. 노드 타입 커스터마이징 ---- */
+  {
+    E("clearSel(); tabs[0].nodes.length=0; tabs[0].edges.length=0;");
+    E("tabs[0].nodes.push({id:'y1', type:'world', name:'아르카디아', desc:''  , x:1000, y:1000}, {id:'y2', type:'trait', name:'용맹', desc:'', x:1400, y:1000}); renderAll();");
+    await wait(30);
+    T('8-1 기본 타입 7종', E('typeList(curTab()).length') === 7 && E("typeList(curTab())[0].key") === 'world');
+    T('8-2 카드에 이모지 없이 타입 이름만', doc.querySelector('[data-id="y1"] .nt').textContent === '세계' && !doc.querySelector('[data-id="y1"] .ni'));
+    T('8-3 타입 색이 인라인으로 적용', !!doc.querySelector('[data-id="y1"]').style.getPropertyValue('--c'));
+    T('8-4 상위/하위 타입 색이 다름',
+      doc.querySelector('[data-id="y1"]').style.getPropertyValue('--c') !== doc.querySelector('[data-id="y2"]').style.getPropertyValue('--c'));
+
+    /* 관리 모달: 이름 변경 + 추가 + 순서 이동 */
+    E('setEditMode(true)');
+    E('openTypeManager()');
+    await wait(30);
+    const ov = doc.querySelector('.ov');
+    T('8-5 타입 관리 모달 — 현재 타입 목록', ov.querySelectorAll('.ty-row').length === 7);
+    ov.querySelectorAll('.ty-row input')[0].value = '대륙';
+    ov.querySelector('#tyAdd').click();
+    await wait(20);
+    T('8-6 + 로 타입 추가', ov.querySelectorAll('.ty-row').length === 8);
+    ov.querySelectorAll('.ty-row input')[7].value = '유물';
+    ov.querySelector('[data-a=s]').click();
+    await wait(40);
+    T('8-7 이름 변경 저장', E("typeList(curTab())[0].label") === '대륙');
+    T('8-8 추가한 타입 저장', E('typeList(curTab()).length') === 8 && E("typeList(curTab())[7].label") === '유물');
+    T('8-9 카드 라벨도 갱신', doc.querySelector('[data-id="y1"] .nt').textContent === '대륙');
+    T('8-10 노드 타입 키는 그대로(데이터 호환)', E("nodeById(curTab(),'y1').type") === 'world');
+
+    /* 사용 중인 타입 삭제 → 노드는 최하위 타입으로 이동 (노드는 사라지지 않는다) */
+    E('openTypeManager()');
+    await wait(30);
+    const ov2 = doc.querySelector('.ov');
+    ov2.querySelector('.ty-row [data-a=del][data-i="0"]').click();
+    await wait(20);
+    T('8-11 × 로 타입 제거', ov2.querySelectorAll('.ty-row').length === 7);
+    ov2.querySelector('[data-a=s]').click();
+    await wait(40);
+    T('8-12 노드는 남고 최하위 타입으로 이동',
+      E("nodeById(curTab(),'y1') !== undefined") && E("nodeById(curTab(),'y1').type") === E("typeList(curTab())[typeList(curTab()).length-1].key"));
+    T('8-13 되돌리기로 타입 변경도 복구', (E('doUndo()'), E('typeList(curTab()).length')) === 8);
+
+    /* 저장 형식에 nodeTypes 포함 */
+    E('saveLocal()');
+    const savedTab = JSON.parse(w.localStorage.getItem('wm_tabs')).tabs[0];
+    T('8-14 저장 데이터에 nodeTypes 포함', Array.isArray(savedTab.nodeTypes) && savedTab.nodeTypes.length === 8);
+    T('8-15 저장에 런타임 색·이모지 없음', savedTab.nodeTypes.every(t => Object.keys(t).sort().join(',') === 'key,label'));
+  }
+
   done();
 })();

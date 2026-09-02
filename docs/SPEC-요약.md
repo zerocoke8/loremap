@@ -9,9 +9,10 @@
 
 ## §1 데이터 스키마 (변경 금지)
 - `tabs[]` + `activeTabId`. Tab `{id, title, nodes, edges, events, worldPrompt, refImages(base64 최대 3, 로컬 전용)}`
-- Node `{id, type, name, desc, x, y, _exp(런타임), _aiPreview(런타임)}` — type: world|group|space|char|item|trait|custom
+- Node `{id, type, name, desc, x, y, _exp(런타임), _aiPreview(런타임)}` — type 은 그 탭 `nodeTypes` 의 key
 - Edge `{id, from, to, label, desc, isParent}` (isParent: from=부모 → to=자식), Event `{id, time, body, order}`
-- `gid()='i'+(idC++)`, `idC=Date.now()`. `TL/TI/TC` 상수 고정. `sanitizeTab` 필수 통과.
+- `gid()='i'+(idC++)`, `idC=Date.now()`. `sanitizeTab` 필수 통과.
+- Tab `nodeTypes = [{key,label}]` — **탭별 노드 타입**. 배열 순서가 상하위 단계(맨 위=최상위)이고 색은 순서대로 자동 배정하며 이모지는 없다. 새 탭은 기본 7종(world…custom)으로 시작하고, 구 데이터에는 필드가 없으므로 `sanitizeTab` 이 기본 7종으로 채워 기존 `node.type` 과 그대로 맞는다. `key` 는 불변, `label` 만 변경한다.
 
 ## §2 저장소 (키·경로 변경 금지)
 - localStorage `wm_tabs = JSON.stringify({tabs})`, `wm_fbcfg`(Firebase 설정 원문). (`wm_k/wm_gk/wm_mh`는 프록시 전환 후 미사용)
@@ -69,5 +70,6 @@ CSS 변수 토큰(`--bg:#0a0b0f` 등 + 타입별 `--c-*`, `--c-*-bg`), Cinzel(�
 - 펼친 설명 위 휠 = 내용 스크롤.
 - ↩ 되돌리기/다시 실행 (Ctrl+Z / Ctrl+Shift+Z, 커밋 단위 30단계, Firebase에도 반영).
 - 다중 선택: 빈 캔버스 Ctrl(⌘)+드래그(마퀴 — 기존 선택에 합집합 누적)·Ctrl/Shift+클릭, 묶음 드래그 이동, Shift 드래그 시 이웃 중심선 스냅+가이드선. 팬은 빈 캔버스 드래그(수식키 없음)/Space+드래그/휠클릭/터치.
+- 🏷 노드 타입: 상태 칩 옆 버튼 → 탭별 타입 추가(+)·이름 변경·순서(↑↓)·삭제(×). 사용 중인 타입을 지우면 그 노드는 최하위 타입으로 옮겨진다(노드는 사라지지 않음).
 - 캔버스 단축키: **Tab** 커서 위치에 노드 추가(바로 입력 모달) · **Delete** 선택한 노드/관계 삭제(확인 모달, 다중 선택은 일괄) · **Alt**(단독 탭) 선택한 노드에서 관계 추가 시작.
 - AI 사건 생성: 노드 선택 모드 — 고른 노드들이 주역/배경이 되는 사건을 생성.

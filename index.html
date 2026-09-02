@@ -171,8 +171,8 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .node{
   position:absolute;pointer-events:auto;touch-action:none;
   min-width:120px;max-width:240px;
-  border:1.5px solid var(--border2);border-radius:12px;
-  background:var(--surface);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+  border:1.5px solid var(--c, var(--border2));border-radius:12px;
+  background:var(--c-bg, var(--surface));backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
   box-shadow:var(--shadow-sm);
   padding:9px 12px;cursor:pointer;user-select:none;
   transition:box-shadow .18s,border-color .18s;
@@ -180,7 +180,6 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .node:hover{box-shadow:var(--shadow-sm),0 0 14px rgba(124,106,247,.18)}
 .node.drag{cursor:grabbing;opacity:.92}
 .nh{display:flex;align-items:center;gap:6px;margin-bottom:5px}
-.ni{font-size:15px;flex:none;filter:var(--icon-shadow)}
 .nn{font-size:13.5px;font-weight:500;line-height:1.35;word-break:keep-all;overflow-wrap:anywhere}
 .nt{font-size:10px;color:var(--text2);opacity:.85;border:1px solid var(--line-faint);border-radius:8px;padding:1px 6px;flex:none}
 .nd{
@@ -190,13 +189,6 @@ body.edit div.eo,body.edit span.eo{display:flex}
 }
 .node.exp .nd{display:block}
 .node.sel{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(165,148,255,.45),0 0 22px rgba(124,106,247,.35)}
-.t-world{border-color:var(--c-world);background:var(--c-world-bg)}
-.t-group{border-color:var(--c-group);background:var(--c-group-bg)}
-.t-space{border-color:var(--c-space);background:var(--c-space-bg)}
-.t-char{border-color:var(--c-char);background:var(--c-char-bg)}
-.t-item{border-color:var(--c-item);background:var(--c-item-bg)}
-.t-trait{border-color:var(--c-trait);background:var(--c-trait-bg)}
-.t-custom{border-color:var(--c-custom);background:var(--c-custom-bg)}
 .node.preview .nn{font-weight:700}
 .node.preview{animation:pulseGold 1.5s ease-in-out infinite}
 @keyframes pulseGold{
@@ -254,6 +246,14 @@ body.edit div.eo,body.edit span.eo{display:flex}
 #pickBanner button.go{color:var(--gold2);border-color:var(--gold)}
 #pickBanner button.go:hover{background:rgba(212,169,71,.14)}
 #pickBanner button:disabled{opacity:.45;cursor:not-allowed}
+.ty-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.ty-dot{width:15px;height:15px;border-radius:5px;flex:none;border:1.5px solid rgba(0,0,0,.25)}
+.ty-row input{flex:1;min-width:0}
+.ty-btn{flex:none;width:32px;height:32px;border:1px solid var(--border2);border-radius:9px;
+  background:var(--bg3);color:var(--text2);font-size:14px;line-height:1}
+.ty-btn:disabled{opacity:.3;cursor:not-allowed}
+.ty-btn.dngr{color:var(--danger)}
+.ty-tier{flex:none;width:16px;text-align:right;color:var(--text3);font-size:11px}
 .row-btns{display:flex;gap:8px;flex-wrap:wrap}
 .row-btns .btn{flex:1;min-width:150px}
 .hint{margin-top:7px;color:var(--text3);font-size:12px;line-height:1.6}
@@ -480,6 +480,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
   <button class="tb eo" id="btnUndo" title="실행 취소 (Ctrl+Z) / 다시 실행 (Ctrl+Shift+Z)">↩ 되돌리기</button>
   <span id="syncChip"><i class="dot off" id="syncDot"></i><span id="syncTxt">오프라인</span></span>
   <span class="sp"></span>
+  <button class="tb" id="btnTypes" title="이 탭의 노드 타입 편집">🏷 노드 타입</button>
   <button class="tb" id="btnLock">🔒 보기 전용</button>
   <button class="tb" id="btnWorld">🌐 세계관</button>
   <button class="tb" id="btnChat">💬 대화</button>
@@ -558,12 +559,59 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
 let idC = Date.now();
 const gid = () => 'i' + (idC++);
 
-const TL = {world:'세계', group:'집단', space:'공간', char:'인물', item:'사물', trait:'성격', custom:'기타'};
-const TI = {world:'🌍', group:'👥', space:'🗺', char:'👤', item:'⚔️', trait:'💎', custom:'📌'};
-const TC = {world:'#9b59d6', group:'#4a9edd', space:'#3ecfb8', char:'#6bbd4a', item:'#e8b84b', trait:'#d4914a', custom:'#5a6090'};
-const TYPES = ['world','group','space','char','item','trait','custom'];
+/* §1 노드 타입 — 탭마다 따로 가지며, 배열 순서가 곧 상하위 단계다(맨 위=최상위).
+   색은 순서대로 자동 배정하므로 사용자는 이름만 정하면 된다. 이모지는 쓰지 않는다.
+   ⚠ key 는 node.type 에 저장되는 값이라 한번 만들면 바꾸지 않는다(label 만 변경). */
+const DEFAULT_TYPES = [
+  {key:'world', label:'세계'}, {key:'group', label:'집단'}, {key:'space', label:'공간'},
+  {key:'char',  label:'인물'}, {key:'item',  label:'사물'}, {key:'trait', label:'성격'},
+  {key:'custom', label:'기타'}
+];
+/* 기본 7종의 기존 색을 HSL로 옮긴 값 — 그 뒤 순서는 색상환을 돌며 자동 생성 */
+const TYPE_HSL = [[276,60,59],[205,68,58],[170,60,53],[100,45,52],[45,77,60],[29,62,56],[232,23,46]];
+
+function typeList(tab){
+  const l = tab && tab.nodeTypes;
+  return (Array.isArray(l) && l.length) ? l : DEFAULT_TYPES;
+}
+function typeIndexOf(tab, key){
+  const l = typeList(tab);
+  const i = l.findIndex(t => t.key === key);
+  return i < 0 ? l.length - 1 : i;          // 모르는 타입은 최하위로 취급
+}
+function typeLabel(tab, key){
+  const t = typeList(tab).find(x => x.key === key);
+  return t ? t.label : '기타';
+}
+/* AI 응답 등 외부에서 온 타입 값을 이 탭의 실제 key 로 보정 */
+function typeKeyOr(tab, key){
+  const l = typeList(tab);
+  if(l.some(t => t.key === key)) return key;
+  const byLabel = l.find(t => t.label === key);      // AI가 라벨을 그대로 준 경우
+  return byLabel ? byLabel.key : l[l.length - 1].key;
+}
+function typeHslAt(i){ return TYPE_HSL[i] || [(i * 47 + 276) % 360, 55, 58]; }
+function typeColorsAt(i){
+  const [h, sa, l] = typeHslAt(i);
+  return curTheme === 'light'
+    ? {border:`hsl(${h} ${sa}% ${Math.max(26, l - 16)}%)`, bg:`hsl(${h} ${sa}% ${l}% / .15)`}
+    : {border:`hsl(${h} ${sa}% ${l}%)`, bg:`hsl(${h} ${Math.round(sa*.72)}% ${Math.round(l*.36)}% / .65)`};
+}
+/* 테마별 테두리·배경색 — 라이트는 진한 테두리+옅은 배경, 다크는 밝은 테두리+어두운 배경 */
+function typeColors(tab, key){ return typeColorsAt(typeIndexOf(tab, key)); }
+/* 새 타입 key — 라벨과 독립적인 안정 식별자 */
+function newTypeKey(){ return 'ty' + (idC++); }
 
 function sanitizeTab(t){
+  /* 구버전 데이터에는 nodeTypes 가 없다 — 기본 7종으로 채우면 기존 node.type 이 그대로 맞는다 */
+  if(!Array.isArray(t.nodeTypes) || !t.nodeTypes.length){
+    t.nodeTypes = DEFAULT_TYPES.map(x => ({...x}));
+  }else{
+    t.nodeTypes = t.nodeTypes
+      .filter(x => x && x.key)
+      .map(x => ({key: String(x.key), label: String(x.label ?? '무제').slice(0, 20)}));
+    if(!t.nodeTypes.length) t.nodeTypes = DEFAULT_TYPES.map(x => ({...x}));
+  }
   if(!t.nodes) t.nodes = [];
   if(!t.edges) t.edges = [];
   if(!t.events) t.events = [];
@@ -972,6 +1020,7 @@ function cleanTab(t){
     edges: (t.edges||[]).filter(e => !e._aiPreview).map(cleanEdgeLS),
     events: (t.events||[]).map(cleanEventLS),
     worldPrompt: t.worldPrompt ?? '',
+    nodeTypes: (t.nodeTypes || DEFAULT_TYPES).map(x => ({key:x.key, label:x.label})),
     refImages: (t.refImages||[]).slice(0,3)
   };
 }
@@ -1084,7 +1133,12 @@ function normFB(kind, d){
   if(kind === 'edges')  return {from:d.from||'', to:d.to||'', label:d.label??'', desc:d.desc??'', isParent:!!d.isParent};
   return {time:d.time??'', body:d.body??'', order:d.order??0};
 }
-function metaFB(t){ return {title:t.title??'무제', worldPrompt:t.worldPrompt??''}; }
+function metaFB(t){
+  return {title:t.title??'무제', worldPrompt:t.worldPrompt??'',
+          nodeTypes:(t.nodeTypes || DEFAULT_TYPES).map(x => ({key:x.key, label:x.label}))};
+}
+/* ⚠ 스냅샷 비교 키는 반드시 metaFB 를 거쳐야 한다 — 필드가 어긋나면 meta 를 무한 재전송한다 */
+function metaKey(m){ return JSON.stringify(metaFB(m)); }
 function objToArr(o){
   return Object.entries(o||{}).map(([id,v]) => { const {_w, ...d} = (v||{}); return {id, ...d}; });
 }
@@ -1199,6 +1253,7 @@ function buildTabFromServer(id, title, v){
     id,
     title: tv.meta?.title ?? title,
     worldPrompt: tv.meta?.worldPrompt ?? '',
+    nodeTypes: tv.meta?.nodeTypes,          // 없으면 sanitizeTab 이 기본 7종으로 채운다
     nodes: objToArr(tv.nodes).map(n => ({_exp:false, ...n})),
     edges: objToArr(tv.edges),
     events: objToArr(tv.events),
@@ -1382,13 +1437,16 @@ async function attachTab(tabId, applyServer = true){
   const mcb = mref.on('value', s => {
     const val = s.val(); if(!val) return;
     const {_w, ...m} = val;
-    const j = JSON.stringify({title:m.title??'무제', worldPrompt:m.worldPrompt??''});
+    const j = metaKey(m);
     if(fbSnap.meta === j) return;
     fbSnap.meta = j;
     if(_w === FB_SID) return;
     const t = tabs.find(x => x.id === tabId); if(!t) return;
     t.title = m.title ?? t.title;
     t.worldPrompt = m.worldPrompt ?? '';
+    if(Array.isArray(m.nodeTypes) && m.nodeTypes.length){
+      t.nodeTypes = m.nodeTypes.map(x => ({key:x.key, label:x.label}));
+    }
     queueRemoteRender();
   });
   fbUnsubs.push([mref,'value',mcb]);
@@ -1411,8 +1469,11 @@ function adoptServerTab(tab, v, applyLocal = true){
     if(applyLocal){
       tab.title = m.title ?? tab.title;
       tab.worldPrompt = m.worldPrompt ?? tab.worldPrompt ?? '';
+      if(Array.isArray(m.nodeTypes) && m.nodeTypes.length){
+        tab.nodeTypes = m.nodeTypes.map(x => ({key:x.key, label:x.label}));
+      }
     }
-    fbSnap.meta = JSON.stringify({title:m.title??'무제', worldPrompt:m.worldPrompt??''});
+    fbSnap.meta = metaKey(m);
   }
   ['nodes','edges','events'].forEach(kind => {
     const src = v[kind] || {};
@@ -1500,7 +1561,7 @@ function fbSyncActive(){
   if(curAttachId !== tab.id) return;   // 활성 탭 리스너 준비 후에만 항목 diff
   const tref = fbRoot.child('tabs/' + tab.id);
 
-  const mj = JSON.stringify(metaFB(tab));
+  const mj = metaKey(tab);
   if(fbSnap.meta !== mj){
     const prev = fbSnap.meta;
     fbSnap.meta = mj;
@@ -1649,17 +1710,19 @@ function renderNodes(){
   nodeSizes = {};
   if(!tab) return;
   tab.nodes.forEach(n => {
-    const type = TC[n.type] ? n.type : 'custom';
     const el = document.createElement('div');
-    el.className = 'node t-' + type
+    el.className = 'node'
       + (n._exp ? ' exp' : '')
       + (isSel(n.id) ? ' sel' : '')
       + (n._aiPreview ? ' preview' : '');
     el.style.left = (n.x||0) + 'px';
     el.style.top  = (n.y||0) + 'px';
     el.dataset.id = n.id;
+    const tc = typeColors(tab, n.type);
+    el.style.setProperty('--c', tc.border);
+    el.style.setProperty('--c-bg', tc.bg);
     el.innerHTML =
-      `<div class="nh"><span class="ni">${TI[type]}</span><span class="nt">${TL[type]}</span></div>` +
+      `<div class="nh"><span class="nt">${escHtml(typeLabel(tab, n.type))}</span></div>` +
       `<div class="nn">${escHtml(n.name || '(이름 없음)')}</div>` +
       `<div class="nd">${escHtml(n.desc || '설명이 없습니다.').replace(/\n/g,'<br>')}</div>`;
     wireNode(el, n);
@@ -1694,7 +1757,7 @@ function renderEdges(){
     let ec = null;
     if(edgeColorMode === 'parent'){
       const ft = nodeById(tab, ed.from)?.type;
-      ec = 'var(--c-' + (TC[ft] ? ft : 'custom') + ')';
+      ec = typeColors(tab, ft).border;
       g.style.setProperty('--ec', ec);
     }
 
@@ -2171,7 +2234,7 @@ function openNodeModal(node, presetPos){
     title: isNew ? '노드 추가' : '노드 편집',
     body: `
       <div><label>타입</label><select id="nmType">
-        ${TYPES.map(k => `<option value="${k}" ${node && node.type===k ? 'selected':''}>${TI[k]} ${TL[k]}</option>`).join('')}
+        ${typeList(curTab()).map((ty, i) => `<option value="${escHtml(ty.key)}" ${(node ? node.type===ty.key : i===typeList(curTab()).length-1) ? 'selected':''}>${escHtml(ty.label)}</option>`).join('')}
       </select></div>
       <div><label>이름</label><input id="nmName" maxlength="60" value="${escHtml(node?.name || '')}" placeholder="예: 은빛 탑"></div>
       <div><label>설명</label><textarea id="nmDesc" rows="5" placeholder="이 요소에 대한 설정을 적어주세요">${escHtml(node?.desc || '')}</textarea></div>`,
@@ -2643,7 +2706,7 @@ async function callGemini(prompt, refImgs){
 function buildCtx(tab){
   const nameOf = id => nodeById(tab, id)?.name ?? '?';
   const nodesStr = tab.nodes.filter(n => !n._aiPreview)
-    .map(n => `- ${n.name} (${TL[n.type] || '기타'})${n.desc ? ': ' + n.desc : ''}`)
+    .map(n => `- ${n.name} (${typeLabel(tab, n.type)})${n.desc ? ': ' + n.desc : ''}`)
     .join('\n') || '(없음)';
   const edgesStr = tab.edges.filter(e => !e._aiPreview)
     .map(e => `- ${nameOf(e.from)} ${e.isParent ? '⊃(부모→자식)' : '↔'} ${nameOf(e.to)} [${e.label || '관계'}]${e.desc ? ': ' + e.desc : ''}`)
@@ -2915,7 +2978,7 @@ async function runEventPick(){
     const user =
       `아래 [선택된 노드]들이 사건의 주역이 되거나 사건이 벌어지는 배경이 되는 새 사건 1개를 만들어라.\n` +
       `[선택된 노드]\n` +
-      picked.map(p => `- ${p.name} (${TL[p.type] || '기타'})${p.desc ? ': ' + p.desc : ''}`).join('\n') + `\n` +
+      picked.map(p => `- ${p.name} (${typeLabel(tab, p.type)})${p.desc ? ': ' + p.desc : ''}`).join('\n') + `\n` +
       `- 선택된 노드 전부가 자연스럽게 얽히도록 하라.\n` +
       `- 그 외 등장 대상도 사용 가능한 이름 목록(${c.names.join(', ') || '없음'}) 안에서만 고른다.\n` +
       `- 기존 사건들과 시간 흐름이 자연스럽게 이어지도록 order 정수를 정하라. 기존 사건 사이에 끼워 넣어도 된다.\n` +
@@ -3015,7 +3078,7 @@ async function runAiGen(prompt){
       const col = i % cols, row = Math.floor(i / cols);
       const nn = {
         id: gid(),
-        type: TYPES.includes(nd.type) ? nd.type : 'custom',
+        type: typeKeyOr(tab, nd.type),
         name: String(nd.name).slice(0,60),
         desc: String(nd.desc || ''),
         x: Math.round(center.x - (cols-1)*135 + col*270 + (Math.random()*56-28)),
@@ -3126,7 +3189,7 @@ function openRecNode(node){
       const sys = worldSystem(tab);
       const user =
         `아래 노드를 세계관에 더 어울리게 개선한 3가지 버전을 제안하라.\n` +
-        `대상 노드 — 타입: ${TL[node.type]}, 이름: ${node.name}, 설명: ${node.desc || '(없음)'}\n` +
+        `대상 노드 — 타입: ${typeLabel(tab, node.type)}, 이름: ${node.name}, 설명: ${node.desc || '(없음)'}\n` +
         `타입은 그대로 두고 이름과 설명만 개선한다. 다른 텍스트 없이 JSON 배열만 출력:\n` +
         `[{"name":"개선된 이름","desc":"개선된 설명 2~3문장"}] (정확히 3개)`;
       const items = parse3(await callClaude(sys, [{role:'user', content:user}], 1600));
@@ -3145,17 +3208,17 @@ function openRecChildren(node){
     async () => {
       const sys = worldSystem(tab);
       const user =
-        `"${node.name}" (${TL[node.type]}: ${node.desc || '설명 없음'}) 아래에 자식으로 추가하면 좋을 노드 3가지를 제안하라.\n` +
+        `"${node.name}" (${typeLabel(tab, node.type)}: ${node.desc || '설명 없음'}) 아래에 자식으로 추가하면 좋을 노드 3가지를 제안하라.\n` +
         `type은 world/group/space/char/item/trait/custom 중 하나. 기존 노드와 이름이 겹치지 않게.\n` +
         `다른 텍스트 없이 JSON 배열만 출력: [{"type":"char","name":"이름","desc":"설명 2~3문장"}] (정확히 3개)`;
       const items = parse3(await callClaude(sys, [{role:'user', content:user}], 1600));
-      return items.filter(i => i.name).map(i => ({...i, _t:`${TI[TYPES.includes(i.type)?i.type:'custom']} ${i.name}`, _d:i.desc || ''}));
+      return items.filter(i => i.name).map(i => ({...i, _t:`${typeLabel(tab, typeKeyOr(tab, i.type))} · ${i.name}`, _d:i.desc || ''}));
     },
     item => {
       const a = Math.random() * Math.PI * 2;
       const nn = {
         id: gid(),
-        type: TYPES.includes(item.type) ? item.type : 'custom',
+        type: typeKeyOr(tab, item.type),
         name: String(item.name).slice(0,60),
         desc: String(item.desc || ''),
         x: Math.round(node.x + Math.cos(a)*260),
@@ -3178,8 +3241,8 @@ function openRecEdge(edge){
       const sys = worldSystem(tab);
       const user =
         `두 노드 사이에 어울리는 관계 3가지를 제안하라.\n` +
-        `A — ${TL[fn?.type] ?? '?'} "${fn?.name ?? '?'}": ${fn?.desc || '설명 없음'}\n` +
-        `B — ${TL[tn?.type] ?? '?'} "${tn?.name ?? '?'}": ${tn?.desc || '설명 없음'}\n` +
+        `A — ${typeLabel(tab, fn?.type)} "${fn?.name ?? '?'}": ${fn?.desc || '설명 없음'}\n` +
+        `B — ${typeLabel(tab, tn?.type)} "${tn?.name ?? '?'}": ${tn?.desc || '설명 없음'}\n` +
         `label은 4자 이내 한국어. 다른 텍스트 없이 JSON 배열만 출력:\n` +
         `[{"label":"관계","desc":"관계 상세 설명 1~2문장"}] (정확히 3개)`;
       const items = parse3(await callClaude(sys, [{role:'user', content:user}], 1400));
@@ -3233,7 +3296,7 @@ function openVisitModal(node){
       const sys = worldSystem(tab) +
         `\n\n[중요 제약] 장면에는 반드시 아래 "사용 가능한 이름" 목록에 있는 대상만 등장시켜야 한다. 목록에 없는 새 인물·장소·사물·집단·고유명사를 만들어내면 안 된다. 이름 없는 '주인공'만 예외다.\n사용 가능한 이름: ${c.names.join(', ') || '(없음)'}`;
       const user =
-        `주인공이 "${node.name}" (${TL[node.type]}${node.desc ? ': ' + node.desc : ''})에 대해 ${visitVerb(node.type)} 장면을 한국어 2~3문단으로 서술하라.\n` +
+        `주인공이 "${node.name}" (${typeLabel(tab, node.type)}${node.desc ? ': ' + node.desc : ''})에 대해 ${visitVerb(node.type)} 장면을 한국어 2~3문단으로 서술하라.\n` +
         (linked.length ? `연결된 요소를 자연스럽게 함께 등장시켜라: ${linked.join(', ')}\n` : '') +
         `제약: 사용 가능한 이름 목록(${c.names.join(', ') || '없음'}) 외의 고유명사 금지. 문단은 빈 줄로 구분. 제목이나 부가 설명 없이 본문만.`;
       const text = (await callClaude(sys, [{role:'user', content:user}], 1800)).trim();
@@ -3502,6 +3565,75 @@ function applyTheme(name, persist = true){
   curTheme = (name === 'light') ? 'light' : 'dark';
   document.body.classList.toggle('light', curTheme === 'light');
   if(persist){ try{ localStorage.setItem('wm_theme', curTheme); }catch(_){} }
+  if(nodesEl) renderAll();          // 타입 색이 인라인이라 테마가 바뀌면 다시 칠해야 한다
+}
+
+/* §5-14 노드 타입 관리 — 탭별 목록. 순서가 상하위 단계이고 색은 순서를 따른다 */
+function openTypeManager(){
+  if(!reqEdit()) return;
+  const tab = curTab(); if(!tab) return;
+  let list = typeList(tab).map(x => ({...x}));
+  const ov = openModal({
+    title:'🏷 노드 타입', wide:true,
+    body:`<div class="hint">맨 위가 최상위 단계이고 아래로 갈수록 하위입니다. 색은 순서를 따라 자동으로 정해집니다.<br>여기서 정한 타입은 <b>이 탭</b>에만 적용되며, 새 탭은 기본 타입으로 시작합니다.</div>` +
+         `<div id="tyList"></div>` +
+         `<button class="btn" id="tyAdd" style="width:100%;margin-top:4px">+ 타입 추가</button>`,
+    footer:`<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="s">저장</button>`
+  });
+  const listEl = ov.querySelector('#tyList');
+  const syncLabels = () => {
+    listEl.querySelectorAll('.ty-row').forEach((r, i) => { if(list[i]) list[i].label = r.querySelector('input').value; });
+  };
+  const draw = () => {
+    listEl.innerHTML = list.map((t, i) =>
+      `<div class="ty-row">` +
+        `<span class="ty-tier">${i+1}</span>` +
+        `<span class="ty-dot" style="background:${typeColorsAt(i).bg};border-color:${typeColorsAt(i).border}"></span>` +
+        `<input value="${escHtml(t.label)}" maxlength="20" placeholder="타입 이름">` +
+        `<button class="ty-btn" data-a="up" data-i="${i}" ${i===0?'disabled':''} title="위로">↑</button>` +
+        `<button class="ty-btn" data-a="dn" data-i="${i}" ${i===list.length-1?'disabled':''} title="아래로">↓</button>` +
+        `<button class="ty-btn dngr" data-a="del" data-i="${i}" ${list.length<=1?'disabled':''} title="삭제">×</button>` +
+      `</div>`).join('');
+  };
+  draw();
+  listEl.addEventListener('click', e => {
+    const b = e.target.closest('.ty-btn'); if(!b) return;
+    syncLabels();
+    const i = +b.dataset.i;
+    if(b.dataset.a === 'up' && i > 0){ [list[i-1], list[i]] = [list[i], list[i-1]]; }
+    if(b.dataset.a === 'dn' && i < list.length-1){ [list[i+1], list[i]] = [list[i], list[i+1]]; }
+    if(b.dataset.a === 'del'){
+      const used = tab.nodes.filter(n => n.type === list[i].key).length;
+      if(used){
+        const moveTo = list.filter((_, k) => k !== i);
+        const dest = moveTo[moveTo.length - 1];
+        toast(`"${list[i].label}" 타입 노드 ${used}개는 저장 시 "${dest.label}"(으)로 바뀝니다`);
+      }
+      list.splice(i, 1);
+    }
+    draw();
+  });
+  ov.querySelector('#tyAdd').onclick = () => {
+    syncLabels();
+    list.push({key:newTypeKey(), label:'새 타입'});
+    draw();
+    const inputs = listEl.querySelectorAll('input');
+    const last = inputs[inputs.length-1]; if(last){ last.focus(); last.select(); }
+  };
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  ov.querySelector('[data-a=s]').onclick = () => {
+    syncLabels();
+    list = list.map(t => ({key:t.key, label:(t.label || '').trim().slice(0,20) || '무제'}));
+    if(!list.length){ toast('타입은 최소 1개 필요합니다', true); return; }
+    /* 사라진 타입의 노드는 최하위 타입으로 옮긴다 — 노드를 잃지 않는 쪽을 택한다 */
+    const keep = new Set(list.map(t => t.key));
+    const fallback = list[list.length-1].key;
+    let moved = 0;
+    tab.nodes.forEach(n => { if(!keep.has(n.type)){ n.type = fallback; moved++; } });
+    tab.nodeTypes = list;
+    commit(); renderAll(); closeModal(ov);
+    toast(moved ? `타입을 저장했습니다 — 노드 ${moved}개를 "${typeLabel(tab, fallback)}"(으)로 옮겼습니다` : '타입을 저장했습니다');
+  };
 }
 
 /* 연결선 색 모드 — 'clean'(단색) / 'parent'(상위 노드 색). localStorage wm_edgecolor */
@@ -3663,6 +3795,7 @@ function bindStaticUI(){
   $('#btnWorld').onclick = () => openPanel('world');
   $('#btnChat').onclick = () => openPanel('chat');
   $('#btnEvents').onclick = () => openPanel('events');
+  $('#btnTypes').onclick = openTypeManager;
   $('#btnSettings').onclick = openSettings;
   $('#fileImport').addEventListener('change', e => {
     handleImportFile(e.target.files[0]);
