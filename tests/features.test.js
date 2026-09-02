@@ -62,11 +62,11 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
   /* ---- 3. 되돌리기 / 다시 실행 ---- */
   E('setEditMode(true)');
   {
-    T('처음엔 되돌릴 것 없음', E('undoStack.length') === 0);
+    T('처음엔 되돌릴 것 없음', E('(undoMap[activeTabId]||[]).length') === 0);
     E("curTab().nodes.push({id:gid(), type:'trait', name:'용기', desc:'', x:1400, y:1300, _exp:false}); commit(); renderAll()");
-    T('커밋 → 스택 적재', E('undoStack.length') === 1 && E('curTab().nodes.length') === 4);
+    T('커밋 → 스택 적재', E('(undoMap[activeTabId]||[]).length') === 1 && E('curTab().nodes.length') === 4);
     E('doUndo()'); await wait(50);
-    T('되돌리기 → 노드 3개', E('curTab().nodes.length') === 3 && E('redoStack.length') === 1);
+    T('되돌리기 → 노드 3개', E('curTab().nodes.length') === 3 && E('(redoMap[activeTabId]||[]).length') === 1);
     T('되돌리기가 렌더에 반영', doc.querySelectorAll('.node').length === 3);
     E('doRedo()'); await wait(50);
     T('다시 실행 → 노드 4개', E('curTab().nodes.length') === 4);
@@ -597,6 +597,63 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     }else{
       T("12-6 관계 편집 항목을 찾음", false, "메뉴 항목 탐색 실패");
     }
+  }
+
+  /* ---- 13. 정렬·되돌리기 3건 회귀 ---- */
+  {
+    const mk = (id, x, y, exp) => `{id:'${id}', type:'char', name:'${id}', desc:'설명이 길게 들어간다', x:${x}, y:${y}${exp ? ", _exp:true" : ""}}`;
+    E("clearSel(); tabs.length = 1; tabs[0].nodes.length=0; tabs[0].edges.length=0; activeTabId = tabs[0].id;");
+    E(`tabs[0].nodes.push(${mk("p",1000,1000,true)}, ${mk("c1",1600,1000)}, ${mk("c2",1000,1600)}, ${mk("c3",1600,1600)});`);
+    E("tabs[0].edges.push(" +
+      "{id:'pe1', from:'p', to:'c1', label:'', desc:'', isParent:true}," +
+      "{id:'pe2', from:'p', to:'c2', label:'', desc:'', isParent:true}," +
+      "{id:'pe3', from:'p', to:'c3', label:'', desc:'', isParent:true});");
+    E("setEditMode(true); commit(); renderAll();");
+    await wait(40);
+
+    /* --- 버그3: 정렬은 펼침(_exp)을 끄고 접힌 크기로 계산한다 --- */
+    T("13-1 준비: 노드 하나가 펼쳐진 상태", E("nodeById(curTab(),'p')._exp") === true);
+    E("askAutoLayout()");
+    await wait(30);
+    T("13-2 정렬 확인 모달", !!doc.querySelector(".ov"));
+    doc.querySelector(".ov [data-a=k]").click();
+    await wait(40);
+    T("13-3 정렬하면 펼침이 모두 접힘", E("curTab().nodes.every(n => !n._exp)"));
+
+    /* --- 버그1: 정렬은 누른 즉시 데이터에 확정되고 되돌리기 1칸이 된다 --- */
+    T("13-4 애니메이션을 기다리지 않고 좌표가 확정됨",
+      E("nodeById(curTab(),'p').x") !== 1000 && Number.isInteger(E("nodeById(curTab(),'p').x")));
+    T("13-5 중간 보간값이 데이터에 남지 않음(전부 정수)",
+      E("curTab().nodes.every(n => Number.isInteger(n.x) && Number.isInteger(n.y))"));
+    T("13-6 정렬이 되돌리기 스택에 적재됨", E("(undoMap[activeTabId]||[]).length") >= 1);
+    const sorted = E("nodeById(curTab(),'p').x");
+    E("doUndo()");
+    await wait(40);
+    T("13-7 정렬 되돌리기로 원좌표 복구", E("nodeById(curTab(),'p').x") === 1000);
+    E("doRedo()");
+    await wait(40);
+    T("13-8 다시 실행으로 정렬 복원", E("nodeById(curTab(),'p').x") === sorted);
+    T("13-9 되돌리기 후 표시 좌표 잔재 없음", E("tweenPos") === null);
+
+    /* --- 버그2: 되돌리기가 탭을 넘나들지 않는다 --- */
+    E("addTab()");
+    await wait(60);
+    T("13-10 탭 2개 · 새 탭이 활성", E("tabs.length") === 2 && E("activeTabId") === E("tabs[1].id"));
+    const tabB = E("activeTabId");
+    E("curTab().nodes.push({id:'b1', type:'item', name:'새노드', desc:'', x:2000, y:2000}); commit();");
+    await wait(30);
+    E("doUndo()");
+    await wait(40);
+    T("13-11 되돌려도 탭이 바뀌지 않음", E("activeTabId") === tabB);
+    T("13-12 현재 탭의 편집만 되돌아감", !E("curTab().nodes.some(n=>n.id==='b1')"));
+    T("13-13 다른 탭 내용은 그대로", E("tabs[0].nodes.length") === 4 && E("nodeById(tabs[0],'p').x") === sorted);
+
+    /* 탭 B 에서 더 되돌릴 게 없으면 탭을 옮기지 않고 안내한다 */
+    E("doUndo()");
+    await wait(40);
+    T("13-14 남은 게 없으면 탭 이동 대신 구조 되돌리기(탭 추가 취소)",
+      E("tabs.length") === 1 && E("activeTabId") === E("tabs[0].id"));
+    T("13-15 구조 되돌리기가 다른 탭 내용을 건드리지 않음", E("tabs[0].nodes.length") === 4);
   }
 
   done();

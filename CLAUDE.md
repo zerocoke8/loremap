@@ -62,7 +62,9 @@ npm run check      # index.html 안의 스크립트 문법 검사
 
 ## 자주 걸리는 함정
 
-- 되돌리기는 `commit()`마다 `recordUndo()`가 직전 상태를 적재하는 구조다. 새 데이터 변형 기능은 반드시 마지막에 `commit()`을 부르면 자동으로 되돌리기 대상이 된다. 되돌리기 적용(`applySnapshot`)은 탭이 바뀌면 `attachTab(id, false)`(서버로 덮지 않음)를 쓴다.
+- 되돌리기는 `commit()`마다 `recordUndo()`가 적재한다(새 데이터 변형 기능은 마지막에 `commit()`만 부르면 된다). **스택이 둘로 나뉘어 있다** — 탭 내용은 탭별 `undoMap/redoMap`(활성 탭만 되돌린다), 탭 집합 변화(추가·복제·삭제·가져오기)는 전역 `undoStack/redoStack`. 두 스택 항목에 붙은 전역 순번 `seq`를 비교해 **시간 역순**으로 소비한다.
+- 되돌리기 적용은 `applyTabSnapshot`(활성 탭 하나만 교체 — 탭이 바뀌지 않는다)과 `applyStruct`(탭 집합만 맞추고 살아남은 탭 객체는 그대로 재사용)로 갈라진다. `applyStruct`는 현재 탭이 살아 있으면 그 탭에 머물고, 탭이 되살아나거나 사라진 복원이라 `pushAllToFB()` 후 `attachTab(id,false)`로 서버를 맞춘다. 가져오기처럼 tabs 전체가 교체되는 변경만 `recordFullUndo()`로 내용까지 되돌린다.
+- 탭이 사라지는 경로(`askDeleteTab`, `applyRemoteTabList`)에서는 `dropTabUndo(id)`로 그 탭의 히스토리를 함께 버릴 것. 안 그러면 죽은 키가 세션 내내 남는다.
 - 연결선은 노드 테두리에서 절단된다(`trimQuad`, 이분 탐색). 노드 크기·위치를 바꾸는 코드는 `renderEdges()` 또는 `updateEdgesFor()`를 다시 불러야 절단이 맞는다.
 - AI 사건 생성은 노드 선택 모드(`evPick`, `#pickBanner`)로 동작한다. 선택 모드 중 노드 클릭은 펼침이 아니라 선택 토글이다.
 - `sel`은 항상 `{nodeIds:배열, edgeId}` 형태여야 한다. `nodeId`(단수)로 잘못 쓰면 `isSel`이 `undefined.includes`로 죽고, `renderNodes`는 `nodesEl.innerHTML=''` 직후 예외로 중단되어 **노드가 화면에서 전부 사라진다**(새로고침 전까지). 선택 해제는 `clearSel()`을 쓸 것.
@@ -71,6 +73,9 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - `renderNodes`가 `nodesEl.innerHTML`을 비우므로 노드 레이어에 넣는 요소(관계 상세 카드 `.e-detail`)는 `renderEdges`에서 다시 만든다.
 - 연결선 색은 CSS에서 `stroke:var(--ec, 기본색)` 형태라야 선택 강조(esel)·미리보기(preview) 규칙보다 뒤로 밀리지 않는다. `!important`나 id 선택자로 덮지 말 것.
 - 드래그 중에는 `updateEdgesFor`만, 트윈 중에는 `updateAllEdgeGeom`만 호출한다(전체 재렌더 금지).
+- **정렬 애니메이션은 데이터를 건드리지 않는다.** `tweenTo`는 최종 좌표를 즉시 `commit()`으로 확정하고, 0.5초 동안은 표시 전용 좌표 `tweenPos`만 움직인다. 좌표를 읽는 쪽은 `dispOf(n)`을 거쳐야 화면과 어긋나지 않는다(`renderNodes`·`centerOf`·`rectFor`·`buildObstacles`·`zoomFit`). 데이터 좌표가 필요한 쪽(드래그 시작·마퀴 히트·Ctrl+C 복사)은 먼저 `endTweenNow()`로 확정할 것.
+- 애니메이션을 중단시키는 경로에는 `cancelTween()`이 반드시 있어야 한다(`applyTabSnapshot`·`applyStruct`·`switchTab`·`askAutoLayout`). 빠뜨리면 좀비 프레임이 DOM 을 덮어써 **데이터는 되돌아갔는데 화면만 정렬된 채** 남는다.
+- 🔀 정렬은 계산 전에 `_exp`를 모두 끄고 `renderAll()`로 크기를 다시 잰다. `nodeSizes`가 펼침 상태의 실측값이라, 펼친 카드가 섞이면 중심 환산이 틀어져 배치가 어긋난다.
 - Firebase 스냅샷 로직을 손댈 때는 `tests/fb.test.js`(인메모리 Firebase 스텁)로 반드시 검증.
 - Firebase 쓰기에 `.catch(()=>{})`를 쓰지 말 것. 실패가 조용히 묻히면 화면은 멀쩡한데 변경은 로컬에만 갇힌다(규칙·권한 문제에서 실제로 발생). `.then(fbWriteOk, err => fbWriteFail(err, 스냅샷롤백))` 형태를 쓸 것 — 롤백을 빠뜨리면 `fbSnap`이 "서버에 있다"고 착각해 영영 재전송하지 않는다.
 - 탭 삭제·전면 교체는 `tabs/{id}` 제거와 `tabList` 갱신을 **한 번의 `fbRoot.update()`로 묶는다**(RTDB 다중 경로 update는 원자적). 두 번의 쓰기로 쪼개면 하나만 성공했을 때 목록에만 남은 고아가 되어 다음 로드에서 **내용 없는 빈 탭**으로 되살아난다.

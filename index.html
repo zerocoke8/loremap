@@ -672,22 +672,70 @@ let linkMode = {active:false, from:null};
 let _justDragged = false;          // §5-2 드래그/롱프레스 직후 클릭 억제
 let cleanupFns = [];               // §8-1 document/window 리스너 누수 방지
 let nodeSizes = {};                // 렌더 후 측정된 노드 크기
+/* 정렬 애니메이션 — 데이터는 버튼을 누른 순간 최종 좌표로 확정하고,
+   0.5초 동안은 tweenPos(표시 전용 좌표)만 움직인다. tweenSeq 는 중단된 프레임 차단용. */
+let tweenSeq = 0;
+let tweenPos = null;
+function cancelTween(){ tweenSeq++; tweenPos = null; }
+const dispOf = nd => (tweenPos && tweenPos[nd.id]) || nd;
+/* 진행 중인 트윈을 "끝난 것"으로 간주하고 카드를 최종 좌표에 즉시 붙인다 —
+   드래그·마퀴처럼 데이터 좌표로 판정하는 조작이 화면과 어긋나지 않게 한다 */
+function endTweenNow(){
+  if(!tweenPos) return;
+  const ids = Object.keys(tweenPos);
+  cancelTween();
+  const tb = curTab(); if(!tb) return;
+  ids.forEach(id => {
+    const nd = nodeById(tb, id);
+    const gx = nodesEl && nodesEl.querySelector(`[data-id="${id}"]`);
+    if(nd && gx){ gx.style.left = nd.x + 'px'; gx.style.top = nd.y + 'px'; }
+  });
+  updateAllEdgeGeom();
+}
 let edgeEls = {};                  // 엣지 SVG 요소 참조 (드래그 중 지오메트리 갱신)
 let rpCur = null;                  // 열린 우측 패널
 let edgeColorMode = 'clean';       // 연결선 색: 'clean' | 'parent' (wm_edgecolor)
 let edgeShape = 'curve';           // 연결선 모양: 'curve' | 'line' (wm_edgeshape)
 let lastGenPrompt = '';
-/* 되돌리기 — commit 시점마다 직전 상태를 적재 (refImages 문자열은 참조 공유로 가볍게) */
+/* 되돌리기 — 탭별 스택(undoMap) + 탭 집합 변경 전용 구조 스택(undoStack).
+   두 스택 항목에 순번(seq)을 달아 시간 순서대로 소비한다.
+   (refImages 문자열은 cleanTab 의 slice 로 참조 공유되어 가볍다) */
+let undoMap = Object.create(null), redoMap = Object.create(null), lastMap = Object.create(null);
 let undoStack = [], redoStack = [], lastState = null;
+let undoSeq = 0;
 const UNDO_MAX = 30;
 function snapState(){ return {activeTabId, tabs: tabs.map(cleanTab)}; }
-function snapKey(st){
-  return st.activeTabId + '|' + JSON.stringify(st.tabs, (k,v) => k === 'refImages' ? v.length : v);
-}
+function snapTab(t){ return cleanTab(t); }
+function tabKey(st){ return JSON.stringify(st, (k,v) => k === 'refImages' ? v.length : v); }
+function tabIdsKey(st){ return (st ? st.tabs : tabs).map(t => t.id).join(','); }
+const topSeq = a => (a && a.length) ? a[a.length - 1].seq : -1;
+function seedUndo(){ tabs.forEach(t => { if(!lastMap[t.id]) lastMap[t.id] = snapTab(t); }); lastState = snapState(); }
+function reseedTabBase(){ lastMap = Object.create(null); tabs.forEach(t => { lastMap[t.id] = snapTab(t); }); }
+function resetTabUndo(){ undoMap = Object.create(null); redoMap = Object.create(null); reseedTabBase(); }
+function dropTabUndo(id){ delete undoMap[id]; delete redoMap[id]; delete lastMap[id]; }
 function recordUndo(){
-  const cur = snapState();
-  if(lastState && snapKey(lastState) !== snapKey(cur)){
-    undoStack.push(lastState);
+  const cur = snapState(), seq = ++undoSeq;
+  if(lastState && tabIdsKey(lastState) !== tabIdsKey(cur)){      // 탭 집합·순서 변화 = 구조 변경
+    undoStack.push({seq, st: lastState});
+    if(undoStack.length > UNDO_MAX) undoStack.shift();
+    redoStack = [];
+  }
+  lastState = cur;
+  cur.tabs.forEach(ct => {                                       // 내용 변화는 각 탭 자신의 스택으로
+    const prev = lastMap[ct.id];
+    if(prev && tabKey(prev) !== tabKey(ct)){
+      (undoMap[ct.id] = undoMap[ct.id] || []).push({seq, st: prev});
+      if(undoMap[ct.id].length > UNDO_MAX) undoMap[ct.id].shift();
+      redoMap[ct.id] = [];
+    }
+    lastMap[ct.id] = ct;
+  });
+}
+/* 가져오기처럼 tabs 전체가 교체되는 변경 — 내용까지 되돌리는 한 단계 */
+function recordFullUndo(){
+  const cur = snapState(), seq = ++undoSeq;
+  if(lastState){
+    undoStack.push({seq, st: lastState, full: true});
     if(undoStack.length > UNDO_MAX) undoStack.shift();
     redoStack = [];
   }
@@ -1108,7 +1156,8 @@ async function applyImport(parsed){
   ensureIdCounter();
   clearSel();
   lsLoadFailed = false;
-  recordUndo();                 // 로드 전 상태를 되돌리기 스택에 보존
+  recordFullUndo();             // 로드 전 상태(내용 포함)를 구조 스택에 보존
+  resetTabUndo();               // 탭 집합이 통째로 바뀌었으므로 탭별 히스토리는 폐기
   markDirty(); saveLocal();
   renderTabs(); renderAll(); zoomFit(); refreshOpenPanels();
   if(fbReady){
@@ -1316,6 +1365,7 @@ function applyRemoteTabList(list){
       next.push(stub); fetches.push(stub);
     }
   });
+  Object.keys(local).forEach(dropTabUndo);   // 원격 목록에서 사라진 탭의 되돌리기 히스토리 폐기
   tabs = next;
   if(!tabs.find(t => t.id === activeTabId)){
     activeTabId = tabs[0]?.id ?? null;
@@ -1699,8 +1749,9 @@ function zoomFit(){
   let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
   tab.nodes.forEach(n => {
     const s = nodeSizes[n.id] || {w:200, h:70};
-    minX = Math.min(minX, n.x);        minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x + s.w);  maxY = Math.max(maxY, n.y + s.h);
+    const p = dispOf(n);                                    // 트윈 중에는 화면에 보이는 좌표 기준
+    minX = Math.min(minX, p.x);        minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x + s.w);  maxY = Math.max(maxY, p.y + s.h);
   });
   const pad = 140;
   minX -= pad; minY -= pad; maxX += pad; maxY += pad;
@@ -1739,8 +1790,9 @@ function renderNodes(){
       + (n._exp ? ' exp' : '')
       + (isSel(n.id) ? ' sel' : '')
       + (n._aiPreview ? ' preview' : '');
-    el.style.left = (n.x||0) + 'px';
-    el.style.top  = (n.y||0) + 'px';
+    const dp = dispOf(n);
+    el.style.left = (dp.x||0) + 'px';
+    el.style.top  = (dp.y||0) + 'px';
     el.dataset.id = n.id;
     const tc = typeColors(tab, n.type);
     el.style.setProperty('--c', tc.border);
@@ -1759,7 +1811,8 @@ function centerOf(id){
   const tab = curTab(); if(!tab) return null;
   const n = nodeById(tab, id); if(!n) return null;
   const s = nodeSizes[id] || {w:200, h:70};
-  return {x:(n.x||0) + s.w/2, y:(n.y||0) + s.h/2};
+  const p = dispOf(n);
+  return {x:(p.x||0) + s.w/2, y:(p.y||0) + s.h/2};
 }
 
 /* ---------------- 연결선 ---------------- */
@@ -1852,7 +1905,8 @@ function buildObstacles(){
   const tab = curTab(); if(!tab) return [];
   return tab.nodes.map(n => {
     const s = nodeSizes[n.id] || {w:200, h:70};
-    return {id:n.id, x:(n.x||0) + s.w/2, y:(n.y||0) + s.h/2, r:Math.max(s.w, s.h)/2};
+    const p = dispOf(n);
+    return {id:n.id, x:(p.x||0) + s.w/2, y:(p.y||0) + s.h/2, r:Math.max(s.w, s.h)/2};
   });
 }
 
@@ -1918,7 +1972,8 @@ function rectFor(id){
   const n = tab && nodeById(tab, id);
   if(!n) return {x1:0, y1:0, x2:0, y2:0};
   const s = nodeSizes[id] || {w:200, h:70};
-  return {x1:n.x - 2, y1:n.y - 2, x2:n.x + s.w + 2, y2:n.y + s.h + 2};
+  const p = dispOf(n);
+  return {x1:(p.x||0) - 2, y1:(p.y||0) - 2, x2:(p.x||0) + s.w + 2, y2:(p.y||0) + s.h + 2};
 }
 const inRect = (p, r) => p.x > r.x1 && p.x < r.x2 && p.y > r.y1 && p.y < r.y2;
 
@@ -2048,6 +2103,7 @@ function wireNode(el, n){
       if(!dragging && editMode && Math.hypot(dx, dy) > 3){
         dragging = true;
         clearTimeout(lp);
+        endTweenNow();                        // 정렬 애니메이션 중이면 즉시 확정 (좌표 판정은 데이터 기준)
         /* 선택된 묶음째 이동. 선택 밖 노드를 끌면 그 노드만 선택 */
         if(!isSel(n.id)) sel = {nodeIds:[n.id], edgeId:null};
         else sel.edgeId = null;
@@ -2506,6 +2562,7 @@ function bindCanvasEvents(){
   }
 
   function startMarquee(e){
+    endTweenNow();                            // 히트 판정은 데이터 좌표 기준 — 먼저 화면을 확정한다
     const r0 = wrapEl.getBoundingClientRect();
     const sx = e.clientX - r0.left, sy = e.clientY - r0.top;
     let moved = false;
@@ -2565,6 +2622,7 @@ function selectedNodes(tab){
 function sizeOf(id){ const s = nodeSizes[id]; return (s && s.w) ? s : {w:200, h:70}; }
 
 function copySelection(){
+  endTweenNow();                    // 좌표를 그대로 복사한다 — 정렬 애니메이션 중이면 먼저 확정
   const tab = curTab(); if(!tab) return false;
   const picked = selectedNodes(tab);
   if(!picked.length){ toast("복사할 노드를 먼저 선택하세요", true); return false; }
@@ -3087,31 +3145,44 @@ function computeRadialLayout(tab){
   return out;
 }
 
-/* 0.5초 트랜지션 애니메이션 후 자동 줌핏 */
+/* 정렬 적용 — 최종 좌표를 즉시 확정·커밋하고, 0.5초 트랜지션은 순수 시각 효과로만 돌린다.
+   ⚠ 애니메이션 중간 프레임을 tab.nodes 에 쓰면 그 값이 localStorage·Firebase·되돌리기로 새어나간다. */
 function tweenTo(targets){
-  const tab = curTab();
+  const tab = curTab(); if(!tab) return;
   const from = {};
-  tab.nodes.forEach(n => { from[n.id] = {x:n.x, y:n.y}; });
+  tab.nodes.forEach(n => { if(targets[n.id]) from[n.id] = {x:n.x, y:n.y}; });
+
+  /* ① 최종 좌표를 먼저 데이터에 확정 — 중단돼도(되돌리기·탭 전환·백그라운드 탭) 결과와 되돌리기 지점이 남는다 */
+  cancelTween();
+  tab.nodes.forEach(n => {
+    const tg = targets[n.id]; if(!tg) return;
+    n.x = Math.round(tg.x); n.y = Math.round(tg.y);
+  });
+  commit();
+
+  /* ② 0.5초 애니메이션은 화면(tweenPos)만 움직인다 */
+  const my = tweenSeq, tabId = activeTabId;
   const t0 = performance.now();
   const ease = p => p < .5 ? 2*p*p : 1 - Math.pow(-2*p + 2, 2)/2;
   function step(now){
+    if(my !== tweenSeq) return;                          // 다른 트윈/취소가 인계
+    if(activeTabId !== tabId){ cancelTween(); return; }  // 탭이 바뀌면 표시 좌표를 걷어낸다
     const p = Math.min(1, (now - t0)/500);
     const e = ease(p);
+    const disp = {};
     tab.nodes.forEach(n => {
-      const tg = targets[n.id]; if(!tg) return;
-      n.x = from[n.id].x + (tg.x - from[n.id].x)*e;
-      n.y = from[n.id].y + (tg.y - from[n.id].y)*e;
+      const f = from[n.id]; if(!f) return;
+      const x = f.x + (n.x - f.x)*e, y = f.y + (n.y - f.y)*e;
+      disp[n.id] = {x, y};
       const el = nodesEl.querySelector(`[data-id="${n.id}"]`);
-      if(el){ el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; }
+      if(el){ el.style.left = x + 'px'; el.style.top = y + 'px'; }
     });
+    tweenPos = disp;
     updateAllEdgeGeom();
-    if(p < 1){ requestAnimationFrame(step); }
-    else{
-      tab.nodes.forEach(n => { n.x = Math.round(n.x); n.y = Math.round(n.y); });
-      commit();
-      renderEdges();
-      zoomFit();
-    }
+    if(p < 1){ requestAnimationFrame(step); return; }
+    tweenPos = null;
+    renderEdges();
+    zoomFit();
   }
   requestAnimationFrame(step);
 }
@@ -3123,8 +3194,26 @@ function askAutoLayout(){
   confirmModal({
     title:'노드 자동 정렬', ok:'정렬 실행',
     html:`부모-자식 관계를 기준으로 방사형 트리로 재배치합니다.<br>
-          <span style="color:var(--text3)">일반 관계(점선)는 배치에 영향을 주지 않으며, 현재 좌표는 덮어써집니다.</span>`,
-    onOk:() => tweenTo(computeRadialLayout(tab))
+          <span style="color:var(--text3)">일반 관계(점선)는 배치에 영향을 주지 않으며, 현재 좌표는 덮어써집니다.<br>
+          펼쳐 둔 설명은 모두 접힙니다 — 카드 크기를 접힌 상태로 통일해야 간격이 고르게 잡힙니다.</span>`,
+    onOk:() => {
+      /* 확인을 누른 시점의 활성 탭을 다시 확인한다. 모달이 떠 있는 동안에도 원격 동기화가 탭을
+         바꿀 수 있고, 되돌리기(applyStruct)는 tabs 배열을 새 객체로 갈아끼운다 —
+         위에서 캡처한 tab 은 이미 버려진 사본일 수 있다. 안내한 그 탭이 아니면 아무것도 하지 않는다. */
+      const t = curTab();
+      if(!t || t.id !== tab.id || t.nodes.length < 2){ toast('탭이 바뀌어 정렬을 취소했습니다', true); return; }
+      cancelTween();        // 앞선 정렬 애니메이션이 남아 있으면 표시 좌표를 걷어낸다
+      /* 정렬 기준 크기를 '접힌 카드'로 통일한다.
+         _exp 는 .nd 를 display:block 으로 바꿔 카드를 최대 240x(본문 200px) 까지 키우고,
+         그 실측값(nodeSizes)이 computeRadialLayout 의 중심→좌상단 환산과 zoomFit 을 흔든다.
+         반발 루프는 MIN=220 상수만 쓰므로 펼친 카드는 서로 겹친 채 배치된다.
+         (.node.sel 은 border-color/box-shadow 뿐이라 크기에 영향이 없다 → 선택은 건드리지 않는다.)
+         _aiPreview 는 배치 대상에서 제외되므로 검토용 펼침을 그대로 둔다.
+         _exp 는 런타임 전용이라 cleanTab·normFB 어디에도 안 잡힌다 → 되돌리기·Firebase 쓰기를 만들지 않는다. */
+      t.nodes.forEach(n => { if(!n._aiPreview) n._exp = false; });
+      renderAll();          // renderNodes 의 offsetWidth 읽기가 동기 리플로를 강제 → nodeSizes 즉시 재실측
+      tweenTo(computeRadialLayout(t));
+    }
   });
 }
 /* ==================================================================
@@ -3816,12 +3905,14 @@ function renderTabs(){
 
 function switchTab(id){
   if(id === activeTabId) return;
+  cancelTween();           // 떠나는 탭의 정렬 애니메이션 프레임이 새 탭 DOM 을 덮어쓰지 않게
   clearPreview();          // 떠나는 탭의 AI 미리보기 정리
   exitLink(); closeCtx();
   activeTabId = id;
   clearSel(); exitEventPick();
   renderTabs(); renderAll(); zoomFit(); refreshOpenPanels();
   if(fbReady) attachTab(id);
+  if(curTab() && !lastMap[id]) lastMap[id] = snapTab(curTab());   // 한 번도 커밋 안 한 탭의 기준선
   markDirty();
 }
 
@@ -3831,6 +3922,7 @@ function addTab(){
   tabs.push(t);
   renderTabs();
   switchTab(t.id);         // attachTab → 빈 스냅샷 → 새 탭 전체 push
+  lastMap[t.id] = snapTab(t); commit();    // 탭 추가를 구조 스택에 적재 (되돌리기 대상)
   toast('새 세계관을 만들었습니다');
 }
 
@@ -3860,6 +3952,7 @@ function duplicateTab(src){
   tabs.push(nt);
   renderTabs();
   switchTab(nt.id);
+  lastMap[nt.id] = snapTab(nt); commit();  // 탭 복제를 구조 스택에 적재
   toast('탭을 복제했습니다');
 }
 
@@ -3897,6 +3990,7 @@ function askDeleteTab(t){
           toast('탭을 삭제하지 못했습니다 — 되돌렸습니다', true);
         });
       }
+      dropTabUndo(t.id);   // 사라진 탭의 편집 히스토리 폐기 (구조 스택이 탭 자체는 복원한다)
       commit();
       toast('삭제했습니다');
     }
@@ -3967,47 +4061,87 @@ async function toggleLock(){
 /* ==================================================================
  * ↩ 되돌리기 / 다시 실행 — commit 시점 스냅샷 복원
  * ================================================================== */
-function applySnapshot(st){
-  tabs = st.tabs.map(t => sanitizeTab({
-    ...t,
-    nodes: t.nodes.map(n => ({...n, _exp:false})),
-    edges: t.edges.map(e => ({...e})),
-    events: t.events.map(v => ({...v})),
-    refImages: [...(t.refImages || [])]
-  }));
-  if(!tabs.length) tabs = [makeDefaultTab()];
-  const sameTab = tabs.some(t => t.id === st.activeTabId) && st.activeTabId === activeTabId;
-  activeTabId = tabs.some(t => t.id === st.activeTabId) ? st.activeTabId : tabs[0].id;
+function reviveTab(s){
+  return sanitizeTab({
+    ...s,
+    nodes: s.nodes.map(n => ({...n, _exp:false})),
+    edges: s.edges.map(e => ({...e})),
+    events: s.events.map(v => ({...v})),
+    refImages: [...(s.refImages || [])]
+  });
+}
+/* 탭 하나만 그 탭의 이전 상태로 — 활성 탭에만 쓰므로 보고 있던 탭이 바뀌지 않는다 */
+function applyTabSnapshot(st){
+  cancelTween();                         // 진행 중인 정렬 애니메이션이 DOM 을 덮어쓰지 않게
+  const nt = reviveTab(st);
+  const i = tabs.findIndex(t => t.id === st.id);
+  if(i < 0) tabs.push(nt); else tabs[i] = nt;
+  activeTabId = nt.id;
   clearSel(); exitLink(); exitEventPick();
   aiPanelEl.hidden = true;
   ensureIdCounter();
   markDirty();
+  lastState = snapState();               // 탭 집합은 그대로 — 구조 기준점만 갱신
   renderTabs(); renderAll(); refreshOpenPanels();
-  if(fbReady){
-    if(sameTab){
-      fbSyncActive();                       // 스냅샷 diff로 서버도 이전 상태로
-    }else{
-      attachTab(activeTabId, false);        // 서버 값으로 덮지 않고(로컬 우선) 스냅샷만 재구축 → 내부에서 push
-    }
-  }
+  if(fbReady) fbSyncActive();            // 항상 활성 탭이므로 diff 동기화로 충분
+}
+/* 탭 집합만 그 시점으로 — 살아남은 탭의 내용은 건드리지 않는다(다른 탭 작업 보존).
+   e.full(가져오기 되돌리기)만 내용까지 복원한다. */
+function applyStruct(e){
+  cancelTween();
+  const st = e.st, prefer = activeTabId;
+  const byId = Object.create(null); tabs.forEach(t => { byId[t.id] = t; });
+  tabs = st.tabs.map(t => (!e.full && byId[t.id]) ? byId[t.id] : reviveTab(t));
+  if(!tabs.length) tabs = [makeDefaultTab()];
+  const has = id => tabs.some(t => t.id === id);
+  activeTabId = has(prefer) ? prefer : (has(st.activeTabId) ? st.activeTabId : tabs[0].id);
+  clearSel(); exitLink(); exitEventPick();
+  aiPanelEl.hidden = true;
+  ensureIdCounter();
+  markDirty();
+  if(e.full) resetTabUndo(); else reseedTabBase();
+  lastState = snapState();
+  renderTabs(); renderAll(); refreshOpenPanels();
+  /* 탭이 되살아나거나 사라진 복원이다 — 활성 탭 diff 만으로는 tabList 와 tabs/{id} 가 갈라진다 */
+  if(fbReady) pushAllToFB().then(() => attachTab(activeTabId, false));
 }
 function doUndo(){
   if(!reqEdit()) return;
-  if(!undoStack.length){ toast('되돌릴 작업이 없습니다'); return; }
-  redoStack.push(snapState());
-  const st = undoStack.pop();
-  lastState = st;
-  applySnapshot(st);
-  toast('되돌렸습니다');
+  const id = activeTabId, stk = undoMap[id] || [];
+  if(stk.length && topSeq(stk) > topSeq(undoStack)){        // 더 나중 변경부터 — 시간 역순 보장
+    (redoMap[id] = redoMap[id] || []).push({seq: topSeq(stk), st: snapTab(curTab())});
+    const e = stk.pop();
+    lastMap[id] = e.st;
+    applyTabSnapshot(e.st);
+    toast('되돌렸습니다'); return;
+  }
+  if(undoStack.length){                                    // 탭 추가·복제·삭제·가져오기
+    const e = undoStack.pop();
+    redoStack.push({seq: e.seq, st: snapState(), full: e.full});
+    applyStruct(e);
+    toast('되돌렸습니다'); return;
+  }
+  toast('되돌릴 작업이 없습니다');
 }
 function doRedo(){
   if(!reqEdit()) return;
-  if(!redoStack.length){ toast('다시 실행할 작업이 없습니다'); return; }
-  undoStack.push(snapState());
-  const st = redoStack.pop();
-  lastState = st;
-  applySnapshot(st);
-  toast('다시 실행했습니다');
+  const id = activeTabId, stk = redoMap[id] || [];
+  const rs = stk.length ? topSeq(stk) : Infinity;          // 다시 실행은 시간 정순 — 더 이른 변경부터
+  const rg = redoStack.length ? topSeq(redoStack) : Infinity;
+  if(stk.length && rs <= rg){
+    (undoMap[id] = undoMap[id] || []).push({seq: rs, st: snapTab(curTab())});
+    const e = stk.pop();
+    lastMap[id] = e.st;
+    applyTabSnapshot(e.st);
+    toast('다시 실행했습니다'); return;
+  }
+  if(redoStack.length){
+    const e = redoStack.pop();
+    undoStack.push({seq: e.seq, st: snapState(), full: e.full});
+    applyStruct(e);
+    toast('다시 실행했습니다'); return;
+  }
+  toast('다시 실행할 작업이 없습니다');
 }
 
 /* ==================================================================
@@ -4332,12 +4466,13 @@ function bindStaticUI(){
       askDeleteSelection();
       return;
     }
-    if((e.ctrlKey || e.metaKey) && !typing() && (e.key === 'z' || e.key === 'Z')){
+    /* 모달이 떠 있으면 되돌리기를 막는다 — 확인 모달의 onOk 가 이미 사라진 탭/객체를 만지지 않게 */
+    if((e.ctrlKey || e.metaKey) && !typing() && !topModal() && (e.key === 'z' || e.key === 'Z')){
       e.preventDefault();
       e.shiftKey ? doRedo() : doUndo();
       return;
     }
-    if((e.ctrlKey || e.metaKey) && !typing() && (e.key === 'y' || e.key === 'Y')){
+    if((e.ctrlKey || e.metaKey) && !typing() && !topModal() && (e.key === 'y' || e.key === 'Y')){
       e.preventDefault(); doRedo(); return;
     }
     if(e.key !== 'Escape') return;
@@ -4380,7 +4515,7 @@ async function main(){
   if(!tabs.length) tabs = [makeDefaultTab()];
   if(!tabs.find(t => t.id === activeTabId)) activeTabId = tabs[0].id;
   ensureIdCounter();
-  lastState = snapState();                 // 되돌리기 기준점
+  seedUndo();                              // 되돌리기 기준점(탭별 + 구조)
   if(getToken()) editMode = true;          // 같은 세션(탭) 안에서는 새로고침해도 잠금 해제 유지
   if(editMode) sweepOrphanTabs();          // setEditMode 를 거치지 않는 복원 경로라 청소를 직접 예약
   updateModeUI();
