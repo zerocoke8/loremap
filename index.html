@@ -654,6 +654,7 @@ let evPick = {active:false, busy:false}; // AI 사건 생성 — 노드 선택 �
 let spaceHeld = false;                   // Space+드래그 = 팬 강제(Ctrl 마퀴보다 우선)
 let lastPointer = null;                  // 캔버스 기준 마지막 마우스 위치(Tab 노드 생성 지점)
 let altSolo = false;                     // Alt를 단독으로 눌렀다 뗐는가(Alt+Tab 등 조합 제외)
+let clipBuf = null;                      // Ctrl+C 로 담아둔 노드·관계 (앱 내부 붙여넣기용)
 let geomFast = false;                    // 드래그/트윈 중 곡선 k 캐시 사용
 let view = {z:0.8, px:0, py:0};
 let linkMode = {active:false, from:null};
@@ -2520,6 +2521,193 @@ function bindCanvasEvents(){
   }
 }
 /* ==================================================================
+ * §5-15 선택 영역 복사 — Ctrl+C 는 두 가지를 동시에 한다
+ *   ① 시스템 클립보드에 PNG(배경 투명)  → 다른 앱에 그림으로 붙여넣기
+ *   ② 앱 내부 버퍼에 노드·관계          → Ctrl+V 로 커서 위치에 붙여넣기
+ * 관계는 양 끝이 모두 선택에 포함된 것만 가져간다(밖으로 나가는 선은 버린다).
+ * ================================================================== */
+function selectedNodes(tab){
+  const ids = new Set(sel.nodeIds);
+  return tab.nodes.filter(n => ids.has(n.id) && !n._aiPreview);
+}
+function sizeOf(id){ const s = nodeSizes[id]; return (s && s.w) ? s : {w:200, h:70}; }
+
+function copySelection(){
+  const tab = curTab(); if(!tab) return false;
+  const picked = selectedNodes(tab);
+  if(!picked.length){ toast("복사할 노드를 먼저 선택하세요", true); return false; }
+  const ids = new Set(picked.map(n => n.id));
+  const edges = tab.edges.filter(e => !e._aiPreview && ids.has(e.from) && ids.has(e.to));
+  clipBuf = {
+    nodes: picked.map(n => ({srcId:n.id, type:n.type, typeLabel:typeLabel(tab, n.type),
+                             name:n.name, desc:n.desc, x:n.x, y:n.y})),
+    edges: edges.map(e => ({from:e.from, to:e.to, label:e.label, desc:e.desc, isParent:!!e.isParent}))
+  };
+  toast(`노드 ${picked.length}개 · 관계 ${edges.length}개를 복사했습니다`);
+  copySelectionImage(tab, picked, edges);      // 이미지가 실패해도 내부 복사는 이미 끝나 있다
+  return true;
+}
+
+/* 붙여넣을 탭에 같은 key 가 없으면 같은 이름의 타입으로, 그것도 없으면 최하위로 */
+function resolveClipType(tab, n){
+  const l = typeList(tab);
+  if(l.some(t => t.key === n.type)) return n.type;
+  const byLabel = l.find(t => t.label === n.typeLabel);
+  return byLabel ? byLabel.key : l[l.length - 1].key;
+}
+
+function pasteClip(){
+  if(!reqEdit()) return false;
+  if(!clipBuf || !clipBuf.nodes.length){ toast("복사한 노드가 없습니다", true); return false; }
+  const tab = curTab(); if(!tab) return false;
+  /* 선택 묶음의 중심이 커서에 오도록 통째로 평행이동한다 */
+  const xs = clipBuf.nodes.map(n => n.x), ys = clipBuf.nodes.map(n => n.y);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2 + 100;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2 + 35;
+  const p = lastPointer ? screenToWorld(lastPointer.x, lastPointer.y) : {x:cx + 40, y:cy + 40};
+  const dx = p.x - cx, dy = p.y - cy;
+  const map = {};
+  const added = clipBuf.nodes.map(n => {
+    const nn = {id:gid(), type:resolveClipType(tab, n), name:n.name, desc:n.desc,
+                x:Math.round(n.x + dx), y:Math.round(n.y + dy), _exp:false};
+    map[n.srcId] = nn.id;
+    tab.nodes.push(nn);
+    return nn;
+  });
+  clipBuf.edges.forEach(e => {
+    const f = map[e.from], t = map[e.to];
+    if(f && t) tab.edges.push({id:gid(), from:f, to:t, label:e.label, desc:e.desc, isParent:!!e.isParent});
+  });
+  sel = {nodeIds:added.map(n => n.id), edgeId:null};   // 바로 드래그로 옮길 수 있도록 선택 상태로
+  commit(); renderAll();
+  toast(`노드 ${added.length}개를 붙여넣었습니다`);
+  return true;
+}
+
+/* ---- PNG 렌더 — 카드는 직접 그리고, 연결선은 화면 SVG 경로를 그대로 재현한다 ---- */
+function drawRoundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function wrapLines(ctx, text, maxW){
+  const out = [];
+  let line = "";
+  for(const ch of String(text ?? "")){
+    if(ch === "\n"){ out.push(line); line = ""; continue; }
+    const t = line + ch;
+    if(line && ctx.measureText(t).width > maxW){ out.push(line); line = ch; }
+    else line = t;
+  }
+  if(line) out.push(line);
+  return out;
+}
+function downloadBlob(name, blob){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+async function copySelectionImage(tab, picked, edges){
+  try{
+    if(typeof document.createElement("canvas").getContext !== "function") return;
+    const SCALE = 2, PAD = 26, R = 12;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    picked.forEach(n => {
+      const sz = sizeOf(n.id);
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + sz.w); maxY = Math.max(maxY, n.y + sz.h);
+    });
+    minX -= PAD; minY -= PAD; maxX += PAD; maxY += PAD;
+    const W = Math.max(1, Math.round(maxX - minX)), H = Math.max(1, Math.round(maxY - minY));
+    if(W * H > 36000000){ toast("선택 범위가 너무 넓어 이미지를 만들지 못했습니다", true); return; }
+    const cv = document.createElement("canvas");
+    cv.width = W * SCALE; cv.height = H * SCALE;
+    const ctx = cv.getContext("2d"); if(!ctx) return;
+    ctx.scale(SCALE, SCALE);
+    ctx.translate(-minX, -minY);            // 배경은 칠하지 않는다 → 투명 PNG
+    const css = getComputedStyle(document.body);
+    const textCol = (css.getPropertyValue("--text") || "").trim() || "#e8e8f0";
+    const text2Col = (css.getPropertyValue("--text2") || "").trim() || "#a8a8bc";
+    const bg2Col = (css.getPropertyValue("--bg2") || "").trim() || "rgba(20,20,30,.9)";
+
+    /* 연결선 — 화면에 그려진 d 속성(M x y Q cx cy x y)을 그대로 재현 */
+    ctx.lineWidth = 1.6; ctx.lineCap = "round";
+    edges.forEach(ed => {
+      const refs = edgeEls[ed.id]; if(!refs || !refs.line) return;
+      const d = refs.line.getAttribute("d") || "";
+      const m = d.match(/M\s*(-?[\d.]+)\s+(-?[\d.]+)\s*Q\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+      if(!m) return;
+      const x0 = +m[1], y0 = +m[2], qx = +m[3], qy = +m[4], x1 = +m[5], y1 = +m[6];
+      ctx.strokeStyle = (edgeColorMode === "parent")
+        ? typeColors(tab, nodeById(tab, ed.from)?.type).border
+        : text2Col;
+      ctx.setLineDash(ed.isParent ? [] : [5, 4]);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(qx, qy, x1, y1); ctx.stroke();
+      ctx.setLineDash([]);
+      if(ed.label){
+        const lx = 0.25*x0 + 0.5*qx + 0.25*x1;
+        const ly = 0.25*y0 + 0.5*qy + 0.25*y1;
+        ctx.font = "500 11px 'Noto Sans KR', sans-serif";
+        const tw = ctx.measureText(ed.label).width;
+        ctx.fillStyle = bg2Col;
+        drawRoundRect(ctx, lx - tw/2 - 5, ly - 9, tw + 10, 18, 7); ctx.fill();
+        ctx.fillStyle = text2Col; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(ed.label, lx, ly);
+        ctx.textAlign = "left";
+      }
+    });
+
+    /* 노드 카드 */
+    picked.forEach(n => {
+      const sz = sizeOf(n.id);
+      const tc = typeColors(tab, n.type);
+      ctx.fillStyle = tc.bg; ctx.strokeStyle = tc.border; ctx.lineWidth = 1.5;
+      drawRoundRect(ctx, n.x, n.y, sz.w, sz.h, R);
+      ctx.fill(); ctx.stroke();
+      ctx.textBaseline = "top";
+      ctx.font = "400 10px 'Noto Sans KR', sans-serif";
+      ctx.fillStyle = text2Col;
+      ctx.fillText(typeLabel(tab, n.type), n.x + 12, n.y + 11);
+      ctx.font = "500 13.5px 'Noto Sans KR', sans-serif";
+      ctx.fillStyle = textCol;
+      let ty = n.y + 28;
+      wrapLines(ctx, n.name || "(이름 없음)", sz.w - 24).forEach(ln => {
+        if(ty < n.y + sz.h - 6){ ctx.fillText(ln, n.x + 12, ty); ty += 18; }
+      });
+      if(n._exp && n.desc){
+        ctx.font = "400 12px 'Noto Sans KR', sans-serif";
+        ctx.fillStyle = text2Col;
+        ty += 4;
+        wrapLines(ctx, n.desc, sz.w - 24).forEach(ln => {
+          if(ty < n.y + sz.h - 6){ ctx.fillText(ln, n.x + 12, ty); ty += 16; }
+        });
+      }
+    });
+
+    const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+    if(!blob) return;
+    try{
+      await navigator.clipboard.write([new ClipboardItem({"image/png": blob})]);
+      toast("이미지도 클립보드에 담았습니다 (배경 투명)");
+    }catch(err){
+      /* HTTPS 가 아니거나 브라우저가 막는 경우(Firefox 등) → 파일로 내려준다 */
+      downloadBlob("worldmind-선택.png", blob);
+      toast("클립보드 이미지가 막혀 PNG 파일로 저장했습니다");
+    }
+  }catch(err){
+    console.error("선택 영역 이미지 만들기 실패", err);
+    toast("이미지를 만들지 못했습니다 (노드 복사는 완료)", true);
+  }
+}
+
+/* ==================================================================
  * §5-4 노드 자동 정렬 — 부모-자식 관계만 사용하는 방사형 트리
  * ================================================================== */
 function computeRadialLayout(tab){
@@ -3851,6 +4039,13 @@ function bindStaticUI(){
       e.preventDefault();
       openNodeModal(null, pointerWorld());   // 보기 모드면 reqEdit가 안내 토스트를 띄운다
       return;
+    }
+    /* Ctrl+C — 선택 영역을 이미지(외부용) + 노드/관계(내부용)로 함께 복사 */
+    if((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && !typing() && !shortcutBusy() && (e.key === 'c' || e.key === 'C')){
+      if(sel.nodeIds.length){ e.preventDefault(); copySelection(); return; }
+    }
+    if((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && !typing() && !shortcutBusy() && (e.key === 'v' || e.key === 'V')){
+      if(clipBuf){ e.preventDefault(); pasteClip(); return; }
     }
     if(e.key === 'Delete' && !typing() && !shortcutBusy() && (sel.nodeIds.length || sel.edgeId)){
       e.preventDefault();

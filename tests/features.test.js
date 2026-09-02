@@ -336,5 +336,65 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T('8-15 저장에 런타임 색·이모지 없음', savedTab.nodeTypes.every(t => Object.keys(t).sort().join(',') === 'key,label'));
   }
 
+  /* ---- 9. 선택 영역 복사(Ctrl+C) / 붙여넣기(Ctrl+V) ---- */
+  {
+    const key = (k, opt) => doc.dispatchEvent(new w.KeyboardEvent("keydown", Object.assign({key:k, bubbles:true, cancelable:true}, opt)));
+    E("clearSel(); tabs[0].nodes.length=0; tabs[0].edges.length=0;");
+    E("tabs[0].nodes.push(" +
+      "{id:'c1', type:'char', name:'주인공', desc:'설명', x:1000, y:1000}," +
+      "{id:'c2', type:'space', name:'탑', desc:'', x:1400, y:1000}," +
+      "{id:'c3', type:'item', name:'검', desc:'', x:1000, y:1400});");
+    E("tabs[0].edges.push(" +
+      "{id:'ce1', from:'c1', to:'c2', label:'방문', desc:'', isParent:false}," +
+      "{id:'ce2', from:'c1', to:'c3', label:'소유', desc:'', isParent:true});");
+    E("view.z=1; view.px=0; view.py=0; applyView(); setEditMode(true); commit(); renderAll();");   // commit 으로 되돌리기 기준점 확정
+    await wait(30);
+
+    /* c1,c2 만 선택 → 내부 관계(ce1)만 따라오고 c3 로 나가는 ce2 는 버려진다 */
+    E("sel = {nodeIds:['c1','c2'], edgeId:null}; renderAll();");
+    await wait(20);
+    key("c", {ctrlKey:true});
+    await wait(40);
+    T("9-1 선택 노드가 버퍼에 담김", E("clipBuf && clipBuf.nodes.length") === 2);
+    T("9-2 내부 관계만 복사(밖으로 나가는 선은 버림)",
+      E("clipBuf.edges.length") === 1 && E("clipBuf.edges[0].label") === "방문");
+    T("9-3 타입 이름도 함께 담김(다른 탭 붙여넣기용)", E("clipBuf.nodes[0].typeLabel") === "인물");
+
+    /* 커서 위치에 붙여넣기 */
+    const cw = doc.getElementById("cwrap");
+    cw.dispatchEvent(new w.MouseEvent("pointermove", {bubbles:true, clientX:2000, clientY:1800}));
+    const before = E("curTab().nodes.length");
+    key("v", {ctrlKey:true});
+    await wait(40);
+    T("9-4 노드 2개 추가", E("curTab().nodes.length") === before + 2);
+    T("9-5 관계도 함께 붙여넣기", E("curTab().edges.length") === 3);
+    T("9-6 붙여넣은 노드는 새 id", E("curTab().nodes.slice(-2).every(n => n.id !== 'c1' && n.id !== 'c2')"));
+    T("9-7 관계가 사본끼리 연결(원본에 붙지 않음)", E(
+      "(function(){var ids=curTab().nodes.slice(-2).map(n=>n.id);" +
+      "var e=curTab().edges[curTab().edges.length-1];" +
+      "return ids.includes(e.from) && ids.includes(e.to);})()"));
+    T("9-8 붙여넣은 노드가 선택 상태", E("sel.nodeIds.length") === 2 &&
+      E("sel.nodeIds.every(id => curTab().nodes.slice(-2).some(n => n.id === id))"));
+    T("9-9 커서 근처로 이동(원본 좌표와 다름)", E("curTab().nodes.slice(-2)[0].x") !== 1000);
+    T("9-10 붙여넣기는 되돌리기 1단계", (E("doUndo()"), E("curTab().nodes.length")) === before);
+
+    /* 선택이 없으면 Ctrl+C 는 기본 동작을 막지 않는다 */
+    E("clearSel(); renderAll();");
+    const ev = new w.KeyboardEvent("keydown", {key:"c", ctrlKey:true, bubbles:true, cancelable:true});
+    doc.dispatchEvent(ev);
+    await wait(20);
+    T("9-11 선택 없으면 Ctrl+C 가로채지 않음", ev.defaultPrevented === false);
+
+    /* 입력 중에는 복사/붙여넣기를 가로채지 않는다 */
+    E("sel = {nodeIds:['c1'], edgeId:null};");
+    E("openPanel('chat')");
+    const ta = doc.getElementById("chatText"); ta.focus();
+    const ev2 = new w.KeyboardEvent("keydown", {key:"c", ctrlKey:true, bubbles:true, cancelable:true});
+    ta.dispatchEvent(ev2);
+    await wait(20);
+    T("9-12 입력 중 Ctrl+C 는 그대로 통과", ev2.defaultPrevented === false);
+    ta.blur(); E("closePanel()");
+  }
+
   done();
 })();
