@@ -203,5 +203,89 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T('수식키 없는 빈 캔버스 클릭은 전체 해제', E('sel.nodeIds.length') === 0);
   }
 
+  /* ---- 7. 캔버스 단축키: Tab 노드 추가 / Delete 삭제 / Alt 관계 추가 ---- */
+  {
+    const key = (k, opt) => doc.dispatchEvent(new w.KeyboardEvent('keydown', Object.assign({key:k, bubbles:true, cancelable:true}, opt)));
+    const keyUp = (k, opt) => doc.dispatchEvent(new w.KeyboardEvent('keyup', Object.assign({key:k, bubbles:true, cancelable:true}, opt)));
+    E("clearSel(); tabs[0].nodes.length = 0; tabs[0].edges.length = 0;");
+    E("tabs[0].nodes.push({id:'k1', type:'char', name:'주인공', desc:'', x:1000, y:1000}, {id:'k2', type:'space', name:'탑', desc:'', x:1600, y:1000});");
+    E("view.z=1; view.px=0; view.py=0; applyView(); renderAll();");
+    await wait(30);
+
+    /* Tab — 커서 위치에 노드 추가 모달 */
+    const cw = doc.getElementById('cwrap');
+    cw.dispatchEvent(new w.MouseEvent('pointermove', {bubbles:true, clientX:640, clientY:480}));
+    const tabEv = new w.KeyboardEvent('keydown', {key:'Tab', bubbles:true, cancelable:true});
+    doc.dispatchEvent(tabEv);
+    await wait(30);
+    T('7-1 Tab → 노드 추가 모달', !!doc.querySelector('.ov #nmName') && doc.querySelector('.ov h3, .ov .mt')?.textContent.includes('노드 추가') !== false);
+    T('7-2 Tab 기본 동작(포커스 이동) 차단', tabEv.defaultPrevented === true);
+    doc.querySelector('.ov #nmName').value = '커서 노드';
+    doc.querySelector('.ov [data-a=s]').click();
+    await wait(30);
+    const made = E("tabs[0].nodes.find(n=>n.name==='커서 노드')");
+    T('7-3 노드가 실제로 추가됨', !!made);
+    /* 커서(640,480) 월드 좌표 기준으로 배치 — 카드 중앙이 그 근처(무작위 ±30) */
+    T('7-4 커서 위치 근처에 생성', made && Math.abs((made.x + 100) - 640) <= 31 && Math.abs((made.y + 35) - 480) <= 31, made);
+    E("tabs[0].nodes = tabs[0].nodes.filter(n=>n.name!=='커서 노드'); clearSel(); renderAll();");
+    await wait(20);
+
+    /* Delete — 선택 1개는 확인 모달을 거쳐 삭제 */
+    E("sel = {nodeIds:['k2'], edgeId:null}; renderAll();");
+    key('Delete');
+    await wait(30);
+    T('7-5 Delete → 확인 모달(즉시 삭제 아님)', !!doc.querySelector('.ov') && E("tabs[0].nodes.some(n=>n.id==='k2')"));
+    doc.querySelector('.ov [data-a=k]').click();
+    await wait(30);
+    T('7-6 확인하면 삭제', !E("tabs[0].nodes.some(n=>n.id==='k2')"));
+
+    /* Delete — 다중 선택은 한 번에 확인 */
+    E("tabs[0].nodes.push({id:'k3', type:'item', name:'검', desc:'', x:1000, y:1500}, {id:'k4', type:'item', name:'방패', desc:'', x:1300, y:1500}); sel={nodeIds:['k3','k4'], edgeId:null}; renderAll();");
+    await wait(20);
+    key('Delete');
+    await wait(30);
+    T('7-7 다중 선택 삭제 확인 모달', doc.querySelector('.ov')?.textContent.includes('2개'));
+    doc.querySelector('.ov [data-a=k]').click();
+    await wait(30);
+    T('7-8 선택 노드 일괄 삭제', !E("tabs[0].nodes.some(n=>n.id==='k3'||n.id==='k4')"));
+
+    /* Alt 단독 탭 → 관계 추가 모드 */
+    E("tabs[0].nodes.push({id:'k5', type:'space', name:'탑', desc:'', x:1600, y:1000}); sel={nodeIds:['k1'], edgeId:null}; renderAll();");
+    await wait(20);
+    key('Alt', {altKey:true}); keyUp('Alt', {altKey:false});
+    await wait(30);
+    T('7-9 Alt → 관계 추가 모드 + 배너', E('linkMode.active') === true && E("linkMode.from") === 'k1' && !doc.getElementById('linkBanner').hidden);
+    E('_justDragged = false');   // 합성 이벤트에는 click이 뒤따르지 않아 수동 소비
+    doc.querySelector('[data-id="k5"]').dispatchEvent(new w.MouseEvent('click', {bubbles:true}));
+    await wait(40);
+    T('7-10 대상 클릭 → 관계 추가 모달(방향 표시)', !!doc.querySelector('.ov #emLabel') && doc.querySelector('.ov .infobox')?.textContent.includes('주인공'));
+    T('7-11 모달이 뜨면 관계 모드는 종료', E('linkMode.active') === false && doc.getElementById('linkBanner').hidden);
+    doc.querySelector('.ov #emLabel').value = '방문';
+    doc.querySelector('.ov [data-a=s]').click();
+    await wait(40);
+    T('7-12 저장하면 관계 생성', E("tabs[0].edges.some(e=>e.from==='k1'&&e.to==='k5'&&e.label==='방문')"), E('tabs[0].edges.length'));
+
+    /* Alt+다른 키 조합은 발동하지 않는다 (Alt+Tab 등) */
+    E("exitLink(); sel={nodeIds:['k1'], edgeId:null};");
+    key('Alt', {altKey:true}); key('Tab', {altKey:true}); keyUp('Alt', {altKey:false});
+    await wait(30);
+    T('7-13 Alt+조합키는 관계 모드 아님', E('linkMode.active') === false && !doc.querySelector('.ov #nmName'));
+
+    /* 선택이 없으면 Alt는 무반응 */
+    E("clearSel();");
+    key('Alt', {altKey:true}); keyUp('Alt', {altKey:false});
+    await wait(20);
+    T('7-14 선택 없으면 Alt 무반응', E('linkMode.active') === false);
+
+    /* 입력 중에는 단축키가 먹지 않는다 */
+    E("openPanel('chat')");
+    const ta = doc.getElementById('chatText'); ta.focus();
+    const tabEv2 = new w.KeyboardEvent('keydown', {key:'Tab', bubbles:true, cancelable:true});
+    ta.dispatchEvent(tabEv2);
+    await wait(20);
+    T('7-15 입력 중 Tab은 노드 생성 안 함', !doc.querySelector('.ov #nmName') && tabEv2.defaultPrevented === false);
+    ta.blur();
+  }
+
   done();
 })();

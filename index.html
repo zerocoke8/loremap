@@ -603,6 +603,8 @@ const isSel = id => sel.nodeIds.includes(id);
 function clearSel(){ sel = {nodeIds:[], edgeId:null}; }
 let evPick = {active:false, busy:false}; // AI 사건 생성 — 노드 선택 모드
 let spaceHeld = false;                   // Space+드래그 = 팬 강제(Ctrl 마퀴보다 우선)
+let lastPointer = null;                  // 캔버스 기준 마지막 마우스 위치(Tab 노드 생성 지점)
+let altSolo = false;                     // Alt를 단독으로 눌렀다 뗐는가(Alt+Tab 등 조합 제외)
 let geomFast = false;                    // 드래그/트윈 중 곡선 k 캐시 사용
 let view = {z:0.8, px:0, py:0};
 let linkMode = {active:false, from:null};
@@ -2140,13 +2142,13 @@ function closeCtx(){ ctxEl.hidden = true; }
 function openNodeMenu(n, x, y){
   openCtx([
     {t:'✏️ 노드 편집',        eo:true, cb:() => openNodeModal(n)},
-    {t:'🔗 관계 추가',        eo:true, cb:() => startLink(n.id)},
+    {t:'🔗 관계 추가  (Alt)', eo:true, cb:() => startLink(n.id)},
     {t:'🧭 주인공 방문',               cb:() => openVisitModal(n)},
     {sep:true},
     {t:'💡 현재 노드 추천',            cb:() => openRecNode(n)},
     {t:'🌱 하위 노드 AI 추천',          cb:() => openRecChildren(n)},
     {sep:true},
-    {t:'🗑 삭제',             eo:true, danger:true, cb:() => askDeleteNode(n)}
+    {t:'🗑 삭제  (Del)',      eo:true, danger:true, cb:() => askDeleteNode(n)}
   ], x, y);
 }
 function openEdgeMenu(ed, x, y){
@@ -2276,6 +2278,32 @@ function descendantsOf(id){
   }
   return out;
 }
+/* 커서가 캔버스 위면 그 지점, 아니면 화면 중앙 (§5-2 단축키) */
+function pointerWorld(){
+  return lastPointer ? screenToWorld(lastPointer.x, lastPointer.y) : viewCenterWorld();
+}
+/* 모달·배너·컨텍스트 메뉴가 떠 있으면 캔버스 단축키를 삼키지 않는다 */
+function shortcutBusy(){
+  return !!topModal() || linkMode.active || evPick.active || (ctxEl && !ctxEl.hidden);
+}
+/* Delete 키 — 선택이 여러 개면 한 번에 확인받는다 (하위 노드는 남긴다) */
+function askDeleteSelection(){
+  if(!reqEdit()) return;
+  const t = curTab(); if(!t) return;
+  const ids = sel.nodeIds.filter(id => nodeById(t, id));
+  if(ids.length === 1){ askDeleteNode(nodeById(t, ids[0])); return; }
+  if(ids.length > 1){
+    confirmModal({
+      title:'노드 삭제', danger:true, ok:`${ids.length}개 삭제`,
+      html:`선택한 노드 <b>${ids.length}개</b>를 삭제할까요?<br>` +
+           `<span style="color:var(--text3)">연결된 관계도 함께 삭제됩니다. 하위 노드는 남습니다.</span>`,
+      onOk:() => doDeleteNodes(ids)
+    });
+    return;
+  }
+  const ed = sel.edgeId && t.edges.find(x => x.id === sel.edgeId);
+  if(ed) askDeleteEdge(ed);
+}
 function doDeleteNodes(ids){
   const t = curTab();
   const set = new Set(ids);
@@ -2336,6 +2364,13 @@ function bindCanvasEvents(){
   }, {passive:false});
 
   wrapEl.addEventListener('contextmenu', e => e.preventDefault());
+
+  /* Tab 노드 생성 위치용 — 캔버스 위 커서 좌표를 기억한다 */
+  wrapEl.addEventListener('pointermove', e => {
+    const r = wrapEl.getBoundingClientRect();
+    lastPointer = {x: e.clientX - r.left, y: e.clientY - r.top};
+  });
+  wrapEl.addEventListener('pointerleave', () => { lastPointer = null; });
 
   wrapEl.addEventListener('pointerdown', e => {
     if(e.target !== wrapEl && e.target !== worldEl && e.target !== edgeSvg) return;
@@ -3659,11 +3694,28 @@ function bindStaticUI(){
   $('#zFit').onclick = zoomFit;
 
   document.addEventListener('pointerdown', e => {
+    altSolo = false;
     if(!ctxEl.hidden && !ctxEl.contains(e.target)) closeCtx();
   });
   const typing = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
   document.addEventListener('keydown', e => {
+    /* Alt 단독 입력 판별 — 다른 키가 끼면(Alt+Tab 등) 취소 */
+    if(e.key === 'Alt'){ if(!e.repeat) altSolo = true; }
+    else altSolo = false;
+
     if(e.key === ' ' && !typing()) spaceHeld = true;
+
+    /* §5-2 캔버스 단축키 — Tab: 커서 위치에 노드 추가 / Delete: 선택 삭제 */
+    if(e.key === 'Tab' && !typing() && !shortcutBusy() && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey){
+      e.preventDefault();
+      openNodeModal(null, pointerWorld());   // 보기 모드면 reqEdit가 안내 토스트를 띄운다
+      return;
+    }
+    if(e.key === 'Delete' && !typing() && !shortcutBusy() && (sel.nodeIds.length || sel.edgeId)){
+      e.preventDefault();
+      askDeleteSelection();
+      return;
+    }
     if((e.ctrlKey || e.metaKey) && !typing() && (e.key === 'z' || e.key === 'Z')){
       e.preventDefault();
       e.shiftKey ? doRedo() : doUndo();
@@ -3680,8 +3732,15 @@ function bindStaticUI(){
     if(tm){ closeModal(tm); return; }
     if(sel.edgeId || sel.nodeIds.length){ clearSel(); renderAll(); }
   });
-  document.addEventListener('keyup', e => { if(e.key === ' ') spaceHeld = false; });
-  window.addEventListener('blur', () => { spaceHeld = false; });
+  document.addEventListener('keyup', e => {
+    if(e.key === ' ') spaceHeld = false;
+    /* Alt 단독 탭 → 선택한 노드에서 관계 추가 시작(대상 노드를 클릭해 연결) */
+    if(e.key === 'Alt'){
+      const solo = altSolo; altSolo = false;
+      if(solo && !typing() && !shortcutBusy() && sel.nodeIds.length === 1) startLink(sel.nodeIds[0]);
+    }
+  });
+  window.addEventListener('blur', () => { spaceHeld = false; altSolo = false; });
 }
 
 async function main(){
