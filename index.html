@@ -246,6 +246,7 @@ body.edit div.eo,body.edit span.eo{display:flex}
 #pickBanner button.go{color:var(--gold2);border-color:var(--gold)}
 #pickBanner button.go:hover{background:rgba(212,169,71,.14)}
 #pickBanner button:disabled{opacity:.45;cursor:not-allowed}
+.imp-drop{outline:2px dashed var(--accent2);outline-offset:-6px}
 .ty-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
 .ty-dot{width:15px;height:15px;border-radius:5px;flex:none;border:1.5px solid rgba(0,0,0,.25)}
 .ty-row input{flex:1;min-width:0}
@@ -481,12 +482,14 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
   <span id="syncChip"><i class="dot off" id="syncDot"></i><span id="syncTxt">오프라인</span></span>
   <span class="sp"></span>
   <button class="tb" id="btnTypes" title="이 탭의 노드 타입 편집">🏷 노드 타입</button>
+  <button class="tb" id="btnImportAI" title="문서·drawio 를 노드로 가져오기">📥 가져오기</button>
   <button class="tb" id="btnLock">🔒 보기 전용</button>
   <button class="tb" id="btnWorld">🌐 세계관</button>
   <button class="tb" id="btnChat">💬 대화</button>
   <button class="tb" id="btnEvents">📜 사건</button>
   <button class="tb" id="btnSettings">⚙ 설정</button>
   <input type="file" id="fileImport" accept=".json,application/json" hidden>
+  <input type="file" id="fileImportAI" accept=".txt,.md,.markdown,.csv,.xml,.drawio,.json,text/*" hidden>
 </div>
 
 <div id="main">
@@ -2708,6 +2711,240 @@ async function copySelectionImage(tab, picked, edges){
 }
 
 /* ==================================================================
+ * §5-16 노드 가져오기 — 문서/drawio 를 AI 로 노드·관계로 변환해 바로 추가
+ *   · drawio(mxGraph XML)는 구조가 확정적이라 코드로 파싱하고 AI 는 타입만 배정
+ *   · 일반 문서는 AI 가 노드·관계·타입을 모두 판별
+ *   · 미리보기 없이 바로 추가하고 Ctrl+Z 로 되돌린다(요청 사양)
+ * ================================================================== */
+const IMPORT_MAX_CHARS = 40000;
+
+/* drawio 압축 본문(base64 + deflate-raw + URI 인코딩) 풀기 */
+async function inflateDrawio(b64){
+  try{
+    if(typeof DecompressionStream === "undefined") return null;
+    const bin = Uint8Array.from(atob(b64.replace(/\s+/g, "")), c => c.charCodeAt(0));
+    const ds = new DecompressionStream("deflate-raw");
+    const buf = await new Response(new Blob([bin]).stream().pipeThrough(ds)).arrayBuffer();
+    return decodeURIComponent(new TextDecoder().decode(buf));
+  }catch(_){ return null; }
+}
+function stripTags(v){
+  return String(v ?? "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+}
+
+/* mxGraph XML → {nodes:[{name,desc}], edges:[{from,to,label}]} (이름 기준) */
+async function parseDrawio(text){
+  let xml = text;
+  const dm = text.match(/<diagram[^>]*>([\s\S]*?)<\/diagram>/);
+  if(dm){
+    const inner = dm[1].trim();
+    if(!inner.includes("<")){                       // 압축본
+      const un = await inflateDrawio(inner);
+      if(!un) return {error:"압축된 drawio 파일입니다. drawio 에서 [파일 → 다른 이름으로 저장]에서 압축을 끄고 다시 시도해주세요."};
+      xml = un;
+    }else xml = inner;
+  }
+  let doc;
+  try{ doc = new DOMParser().parseFromString(xml, "text/xml"); }catch(_){ return {error:"XML 을 읽지 못했습니다."}; }
+  const cells = Array.from(doc.getElementsByTagName("mxCell"));
+  if(!cells.length) return {error:"drawio 도형을 찾지 못했습니다."};
+  const byId = {}, nodes = [], edges = [];
+  cells.forEach(c => {
+    const id = c.getAttribute("id");
+    const val = stripTags(c.getAttribute("value"));
+    if(c.getAttribute("vertex") === "1" && val){ byId[id] = val; nodes.push({name:val, desc:""}); }
+  });
+  cells.forEach(c => {
+    if(c.getAttribute("edge") !== "1") return;
+    const f = byId[c.getAttribute("source")], t = byId[c.getAttribute("target")];
+    if(f && t && f !== t) edges.push({from:f, to:t, label:stripTags(c.getAttribute("value"))});
+  });
+  if(!nodes.length) return {error:"이름이 있는 도형을 찾지 못했습니다."};
+  return {nodes, edges};
+}
+
+/* 가져온 노드만 배치한다 — 기존 노드 위치는 절대 건드리지 않는다 */
+function freeOrigin(tab){
+  const others = tab.nodes.filter(n => !n._aiPreview);
+  if(!others.length) return {x:2000, y:2000};
+  let maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  others.forEach(n => {
+    const sz = sizeOf(n.id);
+    maxX = Math.max(maxX, n.x + sz.w);
+    minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y + sz.h);
+  });
+  return {x: Math.min(3600, maxX + 420), y: (minY + maxY) / 2};
+}
+/* 부모 관계가 있으면 방사형 층으로, 없으면 격자로 */
+function layoutImported(newNodes, newEdges, origin){
+  const ids = new Set(newNodes.map(n => n.id));
+  const kids = {}, hasParent = {};
+  newEdges.filter(e => e.isParent && ids.has(e.from) && ids.has(e.to)).forEach(e => {
+    (kids[e.from] || (kids[e.from] = [])).push(e.to);
+    hasParent[e.to] = 1;
+  });
+  const roots = newNodes.filter(n => !hasParent[n.id]).map(n => n.id);
+  if(!roots.length || !Object.keys(kids).length){
+    const per = Math.max(1, Math.ceil(Math.sqrt(newNodes.length)));
+    newNodes.forEach((n, i) => {
+      n.x = Math.round(origin.x + (i % per) * 250);
+      n.y = Math.round(origin.y + Math.floor(i / per) * 130 - (Math.ceil(newNodes.length / per) - 1) * 65);
+    });
+    return;
+  }
+  const tier = {}, order = [];
+  const q = roots.map(id => [id, 0]);
+  const seen = new Set(roots);
+  while(q.length){
+    const [id, d] = q.shift();
+    tier[id] = d; order.push(id);
+    (kids[id] || []).forEach(c => { if(!seen.has(c)){ seen.add(c); q.push([c, d + 1]); } });
+  }
+  newNodes.forEach(n => { if(tier[n.id] == null){ tier[n.id] = 0; order.push(n.id); } });
+  const byTier = {};
+  order.forEach(id => { (byTier[tier[id]] || (byTier[tier[id]] = [])).push(id); });
+  const pos = {};
+  Object.keys(byTier).forEach(d => {
+    const arr = byTier[d], n = arr.length;
+    arr.forEach((id, i) => {
+      pos[id] = {x: origin.x + (+d) * 300, y: origin.y + (i - (n - 1) / 2) * 150};
+    });
+  });
+  newNodes.forEach(n => {
+    const p = pos[n.id] || origin;
+    n.x = Math.round(Math.min(3800, Math.max(120, p.x)));
+    n.y = Math.round(Math.min(3800, Math.max(120, p.y)));
+  });
+}
+
+function openImportModal(){
+  if(!reqEdit()) return;
+  const ov = openModal({
+    title:"📥 노드 가져오기", wide:true,
+    body:`<div class="hint">문서를 붙여넣거나 파일을 이 창에 끌어다 놓으세요. AI가 노드와 관계를 만들어 <b>이 탭에 바로 추가</b>합니다 — 마음에 안 들면 Ctrl+Z 로 되돌릴 수 있습니다.<br>` +
+          `drawio(.drawio/.xml)는 도형과 연결선을 그대로 읽고 타입만 AI가 정합니다.</div>` +
+          `<textarea id="impText" rows="11" spellcheck="false" placeholder="여기에 붙여넣기 (Ctrl+V)"></textarea>` +
+          `<div class="row-btns" style="margin-top:8px"><button class="btn" id="impPick">파일 선택 (.txt .md .csv .drawio .xml)</button></div>` +
+          `<div class="hint" id="impInfo"></div>`,
+    footer:`<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="go">AI로 분석해 추가</button>`
+  });
+  const ta = ov.querySelector("#impText");
+  const info = ov.querySelector("#impInfo");
+  let fileName = "";
+  const setInfo = () => {
+    const len = ta.value.length;
+    info.textContent = len
+      ? `${fileName ? fileName + " · " : ""}${len.toLocaleString()}자` + (len > IMPORT_MAX_CHARS ? ` — 앞 ${IMPORT_MAX_CHARS.toLocaleString()}자만 사용합니다` : "")
+      : "";
+  };
+  ta.addEventListener("input", () => { fileName = ""; setInfo(); });
+  const readFile = file => {
+    if(!file) return;
+    const fr = new FileReader();
+    fr.onload = () => { ta.value = String(fr.result || ""); fileName = file.name; setInfo(); };
+    fr.onerror = () => toast("파일을 읽지 못했습니다", true);
+    fr.readAsText(file);
+  };
+  ov.querySelector("#impPick").onclick = () => $("#fileImportAI").click();
+  const fin = $("#fileImportAI");
+  const onPick = e => { readFile(e.target.files[0]); e.target.value = ""; };
+  fin.addEventListener("change", onPick);
+  ["dragover","dragenter"].forEach(ev => ov.addEventListener(ev, e => { e.preventDefault(); ov.classList.add("imp-drop"); }));
+  ["dragleave","drop"].forEach(ev => ov.addEventListener(ev, e => { e.preventDefault(); ov.classList.remove("imp-drop"); }));
+  ov.addEventListener("drop", e => { readFile(e.dataTransfer?.files?.[0]); });
+  ov.querySelector("[data-a=c]").onclick = () => { fin.removeEventListener("change", onPick); closeModal(ov); };
+  ov.querySelector("[data-a=go]").onclick = async () => {
+    const raw = ta.value.trim();
+    if(!raw){ toast("가져올 내용을 붙여넣어 주세요", true); return; }
+    fin.removeEventListener("change", onPick);
+    closeModal(ov);
+    await runImport(raw, fileName);
+  };
+}
+
+async function runImport(raw, fileName){
+  const tab = curTab(); if(!tab) return;
+  const looksDrawio = /<mxCell|<mxGraphModel|<mxfile|<diagram/i.test(raw) || /\.(drawio|xml)$/i.test(fileName || "");
+  genOverlayEl.hidden = false;
+  try{
+    let pre = null;
+    if(looksDrawio){
+      pre = await parseDrawio(raw);
+      if(pre.error){ toast(pre.error, true); return; }
+    }
+    const types = typeList(tab).map(t => t.label).join(", ");
+    const sys = "너는 창작 세계관 마인드맵에 넣을 노드를 뽑아내는 도구다. 한국어로 답하고, 다른 설명 없이 JSON 하나만 출력한다.\n" +
+      "출력 형식: {\"types\":[{\"label\":\"새 타입 이름\"}],\"nodes\":[{\"type\":\"타입 이름\",\"name\":\"노드 이름\",\"desc\":\"1~3문장 설명\"}],\"edges\":[{\"from\":\"노드 이름\",\"to\":\"노드 이름\",\"label\":\"관계\",\"isParent\":true}]}\n" +
+      "규칙: nodes 의 type 은 되도록 기존 타입 이름을 쓴다. 꼭 필요할 때만 types 에 새 타입을 제안한다.\n" +
+      "edges 의 from/to 는 반드시 nodes 에 있는 이름과 정확히 같아야 한다. 계층(상위→하위) 관계면 isParent 를 true 로 한다.\n" +
+      "노드 이름은 짧은 고유명사로, 설명은 문서 내용에 근거해 쓴다. 지어내지 않는다.";
+    const body = raw.slice(0, IMPORT_MAX_CHARS);
+    const user = pre
+      ? `기존 타입: ${types}\n\n아래는 다이어그램에서 추출한 도형과 연결선이다. 이름과 연결 관계는 이미 확정이니 바꾸지 말고, 각 노드의 type 과 desc 만 채워라. edges 는 그대로 두되 isParent 만 판단하라.\n\n` +
+          `도형: ${pre.nodes.map(n => n.name).join(", ")}\n` +
+          `연결선:\n${pre.edges.map(e => `- ${e.from} → ${e.to}${e.label ? " (" + e.label + ")" : ""}`).join("\n") || "(없음)"}`
+      : `기존 타입: ${types}\n\n아래 문서에서 세계관 요소를 뽑아 노드와 관계로 만들어라.\n\n"""\n${body}\n"""`;
+    const txt = await callClaude(sys, [{role:"user", content:user}], 8000);
+    const data = parseAIJson(txt);
+    if(!data || !Array.isArray(data.nodes) || !data.nodes.length){
+      toast("가져올 노드를 찾지 못했습니다", true); return;
+    }
+    applyImportResult(tab, data, pre);
+  }catch(err){
+    console.error("노드 가져오기 실패", err);
+    toast(String(err && err.message || err), true);
+  }finally{
+    genOverlayEl.hidden = true;
+  }
+}
+
+function applyImportResult(tab, data, pre){
+  /* 1) 새 타입 — 이름이 겹치지 않는 것만 맨 아래에 붙인다 */
+  const list = typeList(tab).map(t => ({...t}));
+  let addedTypes = 0;
+  (Array.isArray(data.types) ? data.types : []).forEach(t => {
+    const label = String(t && t.label || "").trim().slice(0, 20);
+    if(!label || list.some(x => x.label === label)) return;
+    list.push({key:newTypeKey(), label}); addedTypes++;
+  });
+  if(addedTypes) tab.nodeTypes = list;
+
+  /* 2) 노드 — 이름 중복은 건너뛴다 */
+  const existing = new Set(tab.nodes.map(n => (n.name || "").trim()));
+  const byName = {}, made = [];
+  data.nodes.forEach(nd => {
+    const name = String(nd && nd.name || "").trim().slice(0, 60);
+    if(!name || existing.has(name) || byName[name]) return;
+    const nn = {id:gid(), type:typeKeyOr(tab, String(nd.type || "").trim()),
+                name, desc:String(nd.desc || "").slice(0, 2000), x:2000, y:2000, _exp:false};
+    byName[name] = nn.id; made.push(nn); tab.nodes.push(nn);
+  });
+  if(!made.length){ toast("추가할 새 노드가 없습니다 (이미 있는 이름뿐)", true); return; }
+
+  /* 3) 관계 — drawio 는 추출 결과를, 문서는 AI 결과를 쓴다 */
+  const src = pre ? pre.edges.map(e => ({...e, isParent:true})) : (Array.isArray(data.edges) ? data.edges : []);
+  const aiParent = {};
+  if(pre && Array.isArray(data.edges)) data.edges.forEach(e => { aiParent[`${e.from}\u0000${e.to}`] = !!e.isParent; });
+  const newEdges = [];
+  src.forEach(e => {
+    const f = byName[String(e.from || "").trim()], t = byName[String(e.to || "").trim()];
+    if(!f || !t || f === t) return;
+    const key = `${e.from}\u0000${e.to}`;
+    const ne = {id:gid(), from:f, to:t, label:String(e.label || "").slice(0, 20),
+                desc:"", isParent: pre ? (aiParent[key] ?? true) : !!e.isParent};
+    tab.edges.push(ne); newEdges.push(ne);
+  });
+
+  /* 4) 새 노드만 배치 — 기존 노드 좌표는 손대지 않는다 */
+  layoutImported(made, newEdges, freeOrigin(tab));
+  sel = {nodeIds:made.map(n => n.id), edgeId:null};
+  commit(); renderAll(); zoomFit();
+  toast(`노드 ${made.length}개 · 관계 ${newEdges.length}개를 추가했습니다` +
+        (addedTypes ? ` (새 타입 ${addedTypes}개)` : "") + " — Ctrl+Z 로 되돌릴 수 있습니다");
+}
+
+/* ==================================================================
  * §5-4 노드 자동 정렬 — 부모-자식 관계만 사용하는 방사형 트리
  * ================================================================== */
 function computeRadialLayout(tab){
@@ -3984,6 +4221,7 @@ function bindStaticUI(){
   $('#btnChat').onclick = () => openPanel('chat');
   $('#btnEvents').onclick = () => openPanel('events');
   $('#btnTypes').onclick = openTypeManager;
+  $('#btnImportAI').onclick = openImportModal;
   $('#btnSettings').onclick = openSettings;
   $('#fileImport').addEventListener('change', e => {
     handleImportFile(e.target.files[0]);

@@ -396,5 +396,86 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     ta.blur(); E("closePanel()");
   }
 
+  /* ---- 10. 노드 가져오기 (문서 / drawio) ---- */
+  {
+    /* AI 응답을 시나리오별로 갈아끼운다 */
+    let aiReply = "";
+    const origFetch = w.fetch;
+    w.fetch = async (url, init) => {
+      calls.push({url, init});
+      if(String(url).endsWith("/api/claude")) return J({content:[{type:"text", text:aiReply}]}, 200);
+      return J({}, 404);
+    };
+
+    E("clearSel(); tabs[0].nodes.length=0; tabs[0].edges.length=0;");
+    E("tabs[0].nodes.push({id:'k0', type:'char', name:'기존 인물', desc:'', x:1000, y:1000});");
+    E("setEditMode(true); commit(); renderAll();");
+    await wait(30);
+    const baseX = E("nodeById(curTab(),'k0').x"), baseY = E("nodeById(curTab(),'k0').y");
+
+    /* (1) 일반 문서 — AI가 노드·관계·새 타입까지 제안 */
+    aiReply = JSON.stringify({
+      types:[{label:"세력"}],
+      nodes:[{type:"세력", name:"은빛 기사단", desc:"북방의 기사단"},
+             {type:"인물", name:"레온", desc:"단장"},
+             {type:"인물", name:"기존 인물", desc:"중복이라 건너뛰어야 함"}],
+      edges:[{from:"은빛 기사단", to:"레온", label:"단장", isParent:true}]
+    });
+    E("openImportModal()");
+    await wait(30);
+    const ov = doc.querySelector(".ov");
+    T("10-1 가져오기 모달", !!ov && !!ov.querySelector("#impText"));
+    ov.querySelector("#impText").value = "은빛 기사단은 북방을 지키는 기사단이며 단장은 레온이다.";
+    ov.querySelector("[data-a=go]").click();
+    await wait(150);
+    T("10-2 새 노드 2개 추가(이름 중복은 건너뜀)", E("curTab().nodes.length") === 3, E("curTab().nodes.map(n=>n.name).join(',')"));
+    T("10-3 관계 추가", E("curTab().edges.length") === 1 && E("curTab().edges[0].isParent") === true);
+    T("10-4 새 타입 추가", E("typeList(curTab()).some(t=>t.label==='세력')"));
+    T("10-5 제안 타입이 노드에 배정", E("typeLabel(curTab(), nodeById(curTab(), curTab().nodes.find(n=>n.name==='은빛 기사단').id).type)") === "세력");
+    T("10-6 기존 노드 위치는 그대로", E("nodeById(curTab(),'k0').x") === baseX && E("nodeById(curTab(),'k0').y") === baseY);
+    T("10-7 추가된 노드는 기존 노드와 겹치지 않게 배치",
+      E("curTab().nodes.filter(n=>n.id!=='k0').every(n => n.x > " + baseX + ")"));
+    T("10-8 추가분이 선택 상태", E("sel.nodeIds.length") === 2);
+    T("10-9 가져오기는 되돌리기 1단계", (E("doUndo()"), E("curTab().nodes.length")) === 1);
+    E("doRedo()"); await wait(30);
+
+    /* (2) drawio — 도형·연결선은 코드가 뽑고 AI는 타입만 */
+    const drawio = '<mxfile><diagram><mxGraphModel><root>' +
+      '<mxCell id="0"/><mxCell id="1" parent="0"/>' +
+      '<mxCell id="a" value="아르카디아" vertex="1" parent="1"/>' +
+      '<mxCell id="b" value="&lt;b&gt;은빛 탑&lt;/b&gt;" vertex="1" parent="1"/>' +
+      '<mxCell id="e1" value="포함" edge="1" source="a" target="b" parent="1"/>' +
+      '</root></mxGraphModel></diagram></mxfile>';
+    aiReply = JSON.stringify({
+      types:[],
+      nodes:[{type:"세계", name:"아르카디아", desc:"세계"}, {type:"공간", name:"은빛 탑", desc:"탑"}],
+      edges:[{from:"아르카디아", to:"은빛 탑", label:"포함", isParent:true}]
+    });
+    const nBefore = E("curTab().nodes.length");
+    E("openImportModal()");
+    await wait(30);
+    const ov2 = doc.querySelector(".ov");
+    ov2.querySelector("#impText").value = drawio;
+    ov2.querySelector("[data-a=go]").click();
+    await wait(180);
+    T("10-10 drawio 도형 2개 추가", E("curTab().nodes.length") === nBefore + 2);
+    T("10-11 HTML 태그가 벗겨진 이름", E("curTab().nodes.some(n=>n.name==='은빛 탑')"));
+    T("10-12 drawio 연결선 반영", E("curTab().edges.some(e => nodeById(curTab(),e.from)?.name==='아르카디아' && nodeById(curTab(),e.to)?.name==='은빛 탑')"));
+    const sent = calls.filter(c => String(c.url).endsWith("/api/claude")).pop();
+    const sentBody = sent && JSON.parse(sent.init.body);
+    T("10-13 drawio 는 추출 결과를 프롬프트로 전달", !!sentBody && sentBody.messages[0].content.includes("도형: 아르카디아, 은빛 탑"));
+
+    /* (3) 빈 입력 방어 */
+    E("openImportModal()");
+    await wait(30);
+    const ov3 = doc.querySelector(".ov");
+    ov3.querySelector("[data-a=go]").click();
+    await wait(30);
+    T("10-14 빈 입력은 모달 유지 + 안내", !!doc.querySelector(".ov #impText") &&
+      [...doc.querySelectorAll(".toast.err")].some(t => t.textContent.includes("붙여넣어")));
+    doc.querySelector(".ov [data-a=c]").click();
+    w.fetch = origFetch;
+  }
+
   done();
 })();
