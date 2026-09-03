@@ -1,8 +1,12 @@
 const { JSDOM } = require('jsdom');
 const fs = require('fs');
+const { neutralizeDeploy } = require('./helpers');
 
-const html = fs.readFileSync(require('path').join(__dirname,'..','index.html'), 'utf8')
-  .replace(/<script src="https:[^"]+"><\/script>/g, '')
+/* FIREBASE_CONFIG 를 비워 두어야 main()이 localStorage 의 wm_fbcfg 로 떨어진다 —
+   이 테스트가 검증하려는 경로가 그것이다(내장 설정이 채워지면 죽은 분기가 된다). */
+const html = neutralizeDeploy(
+  fs.readFileSync(require('path').join(__dirname,'..','index.html'), 'utf8')
+    .replace(/<script src="https:[^"]+"><\/script>/g, ''))
   .replace('const ORPHAN_GRACE_MS = 15000;', 'const ORPHAN_GRACE_MS = 60;');   // 테스트에서는 고아 정리 유예를 짧게
 
 let pass = 0, fail = 0;

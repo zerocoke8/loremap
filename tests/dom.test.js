@@ -1,9 +1,13 @@
 const { JSDOM } = require('jsdom');
 const fs = require('fs');
+const { neutralizeDeploy } = require('./helpers');
 
-const html = fs.readFileSync(require('path').join(__dirname,'..','index.html'), 'utf8')
-  // CDN(폰트·Firebase)은 오프라인 환경이므로 외부 리소스 로드는 생략 (typeof firebase === 'undefined' 경로 검증)
-  .replace(/<script src="https:[^"]+"><\/script>/g, '');
+/* 배포값을 비운 상태로 검사한다 — FIREBASE_CONFIG 가 채워져 있으면 main()이 연결을 시도해
+   상태 칩이 '오프라인'이 아니라 '연결 오류'가 된다. */
+const html = neutralizeDeploy(
+  fs.readFileSync(require('path').join(__dirname,'..','index.html'), 'utf8')
+    // CDN(폰트·Firebase)은 오프라인 환경이므로 외부 리소스 로드는 생략 (typeof firebase === 'undefined' 경로 검증)
+    .replace(/<script src="https:[^"]+"><\/script>/g, ''));
 
 let pass = 0, fail = 0;
 const T = (name, cond, extra) => {

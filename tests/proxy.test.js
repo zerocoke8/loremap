@@ -1,6 +1,8 @@
 const {JSDOM}=require('jsdom');
+const {neutralizeDeploy}=require('./helpers');
 let html=require('fs').readFileSync(require('path').join(__dirname,'..','index.html'),'utf8').replace(/<script src="https:[^"]+"><\/script>/g,'');
-html=html.replace("const API_BASE = '';","const API_BASE = 'https://api.test';");   // 배포 설정이 채워진 상태
+/* 실제 배포값이 무엇이든 테스트용 주소로 갈아끼운다(리터럴 치환은 값이 채워지면 조용히 no-op 이 된다) */
+html=neutralizeDeploy(html,{apiBase:'https://api.test'});
 let p=0,f=0;const T=(n,c,x)=>{c?p++:f++;console.log((c?'  ok  ':'FAIL  ')+n+(x!==undefined&&!c?' → '+JSON.stringify(x):''))};
 const calls=[];
 const J=(o,s)=>new Response(JSON.stringify(o),{status:s,headers:{'content-type':'application/json'}});

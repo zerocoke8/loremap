@@ -15,7 +15,7 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
 (async () => {
   const calls = [];
   const {win: w, doc, E} = boot({
-    patch: h => h.replace("const API_BASE = '';", "const API_BASE = 'https://api.test';"),
+    deploy: {apiBase: 'https://api.test'},        // 배포값 유무와 무관하게 테스트 주소로 고정
     pre: w => {
       w.fetch = async (url, init) => {
         calls.push({url, init});

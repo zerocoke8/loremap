@@ -20,7 +20,7 @@ README.md              배포 안내 (관리자용)
 
 ```bash
 npm install        # jsdom 하나뿐
-npm test           # 6개 파일 · 105개 검증. 작업 전후 반드시 실행
+npm test           # 7개 파일 · 267개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
 npm run check      # index.html 안의 스크립트 문법 검사
 ```
 
