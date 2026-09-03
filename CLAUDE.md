@@ -56,6 +56,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 
 ## 동작 원리 요약
 
+- **Firebase 편집 세션**: Worker 에 `FIREBASE_SERVICE_ACCOUNT` 가 있으면 `/api/auth` 가 Firebase 커스텀 토큰(RS256, uid `wm-editor`, 클레임 `editor:true`)을 함께 내려주고 `fbSignIn`이 `signInWithCustomToken`으로 로그인한다. 보안 규칙은 `auth.token.editor === true` 로 편집자를 식별한다(`auth != null` 은 공개 apiKey 로 우회되므로 금지). 커스텀 토큰은 1시간짜리라 새로고침 시 `fbRefreshSession`이 `/api/fbtoken`으로 새로 받는다. **서비스 계정이 없으면 `fbToken`이 오지 않고 지금까지처럼 동작한다** — 규칙을 조이기 전에는 아무것도 달라지지 않는다.
 - **편집 모드**: 기본 보기 전용. 🔒 → `apiAuth(code)` → Worker가 `MASTER_CODE`와 비교 → 12h HMAC 토큰 → sessionStorage. AI 호출은 토큰 필수, 401이면 토큰 삭제 + 보기 모드 복귀. 마스터 코드를 바꾸면 모든 토큰 무효.
 - **동기화**: 로컬은 1.2초 주기 `saveLocal`, Firebase는 `commit()` 시 즉시 항목 단위 diff(`fbSnap` 스냅샷과 비교). `attachTab`은 스냅샷을 항상 빈 상태에서 시작해 서버 once 읽기로 채운다 — 복제 탭이 전량 push되는 이유. 수신은 `_w===FB_SID`면 무시, 50ms 디바운스 렌더. `fbSyncActive`는 **편집 모드에서만** 쓴다(보기 전용은 읽기·실시간 수신만). 쓰기가 실패하면 `fbWriteFail`이 `fbSnap` 항목을 롤백해 다음 `commit()`에서 재시도하고 상태 칩을 '저장 실패'로 바꾼다.
 - **설정**: 테마(`body.light` + CSS 변수), 연결선 색(`--ec` 변수, 선택/미리보기 규칙이 우선), 연결선 모양(곡선/직선). 즉시 미리보기 → 저장 시 유지, 취소 시 `onClose`로 복귀.

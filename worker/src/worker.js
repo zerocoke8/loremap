@@ -2,7 +2,8 @@
  * WorldMind API 프록시 — Cloudflare Worker
  *
  * 역할
- *  - POST /api/auth    : 마스터 코드 검증 → 12시간 서명 토큰 발급
+ *  - POST /api/auth    : 마스터 코드 검증 → 12시간 서명 토큰 발급 (+ Firebase 커스텀 토큰)
+ *  - POST /api/fbtoken : (토큰 필요) Firebase 커스텀 토큰 재발급 — Firebase 세션은 1시간이라 갱신이 필요하다
  *  - POST /api/claude  : (토큰 필요) Anthropic Messages API 대리 호출
  *  - POST /api/gemini  : (토큰 필요) Google Gemini generateContent 대리 호출
  *  - GET  /api/health  : 동작 확인
@@ -14,6 +15,10 @@
  *  - ANTHROPIC_WORKSPACE_ID (선택) 키가 여러 워크스페이스용(개인/서비스 계정 키)이면 필요. wrkspc_… 형식.
  *                       콘솔 Settings → Workspaces 의 ID 열. 단일 워크스페이스 키면 비워둠.
  *  - TOKEN_SECRET       (선택) 미설정 시 MASTER_CODE에서 파생 → 코드를 바꾸면 기존 토큰이 모두 만료됨
+ *  - FIREBASE_SERVICE_ACCOUNT (선택) Firebase 콘솔 → 프로젝트 설정 → 서비스 계정 → '새 비공개 키 생성'
+ *                       으로 받은 JSON 파일 내용 전체를 그대로 한 값으로 붙여넣는다.
+ *                       설정하면 마스터 코드 검증에 성공한 사람에게만 Firebase 쓰기 권한을 준다.
+ *                       미설정이면 fbToken 을 생략하고 지금까지처럼 동작한다(앱이 깨지지 않는다).
  *
  * 일반 변수 (Text)
  *  - ALLOWED_ORIGINS    허용할 사이트 주소(도메인까지만, 끝에 / 없이). 쉼표로 여러 개. 예) https://myname.github.io
@@ -35,6 +40,12 @@ export default {
     if(request.method === 'OPTIONS') return new Response(null, {status:204, headers:cors});
     if(!url.pathname.startsWith('/api/')) return json({error:{message:'not found'}}, 404, cors);
     if(!originAllowed(origin, env)) return json({error:{message:'origin not allowed: ' + origin}}, 403, cors);
+    /* 마스터 코드 검증만은 브라우저 페이지에서 온 요청으로 한정한다 —
+       originAllowed 는 Origin 없는 요청(curl 등)을 통과시키므로 무차별 대입 표면이 된다.
+       허용 목록이 * 이면 이 제한도 두지 않는다(개발용). */
+    if(url.pathname === '/api/auth' && !origin && !allowedList(env).includes('*')){
+      return json({error:{message:'origin required'}}, 403, cors);
+    }
 
     try{
       if(url.pathname === '/api/health') return json({ok:true, time:Date.now()}, 200, cors);
@@ -43,6 +54,7 @@ export default {
       const ok = await verifyToken(bearer(request), env);
       if(!ok) return json({error:{message:'unauthorized'}}, 401, cors);
 
+      if(url.pathname === '/api/fbtoken' && request.method === 'POST') return handleFbToken(env, cors);
       if(url.pathname === '/api/claude' && request.method === 'POST') return handleClaude(request, env, cors);
       if(url.pathname === '/api/gemini' && request.method === 'POST') return handleGemini(request, env, cors);
       return json({error:{message:'not found'}}, 404, cors);
@@ -91,7 +103,67 @@ async function handleAuth(request, env, cors){
   }
   const exp = Date.now() + TOKEN_TTL_MS;
   const token = await signToken({exp, v:1}, env);
-  return json({token, exp}, 200, cors);
+  /* Firebase 커스텀 토큰은 있으면 얹어 준다 — 서비스 계정이 없거나 서명에 실패해도
+     200 과 token 은 그대로 내려야 AI 기능이 죽지 않는다 */
+  const fbToken = await mintFbToken(env);
+  return json(fbToken ? {token, exp, fbToken} : {token, exp}, 200, cors);
+}
+
+/* Firebase 세션(커스텀 토큰)은 1시간짜리라 12시간 편집 세션 도중 갱신이 필요하다.
+   verifyToken 게이트 뒤에 있으므로 유효한 편집 토큰을 가진 사람만 재발급받는다. */
+async function handleFbToken(env, cors){
+  const fbToken = await mintFbToken(env);
+  if(!fbToken) return json({error:{message:'FIREBASE_SERVICE_ACCOUNT 가 설정되지 않았습니다'}}, 503, cors);
+  return json({fbToken}, 200, cors);
+}
+
+/* ---------------- Firebase 커스텀 토큰 (RS256) ---------------- */
+/* 서비스 계정 개인키로 서명한 JWT. 클라이언트가 signInWithCustomToken 으로 교환하면
+   규칙에서 auth.token.editor === true 로 편집자를 식별할 수 있다.
+   uid 를 고정값으로 두는 이유: 이 앱은 세계관 하나를 여럿이 함께 보는 공용 데이터셋이라
+   기기마다 다른 uid 를 주면 소유권 모델이 성립하지 않는다. */
+const FB_TOKEN_AUD = 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit';
+let saCache = null;
+function serviceAccount(env){
+  const raw = env.FIREBASE_SERVICE_ACCOUNT;
+  if(!raw) return null;
+  if(saCache && saCache.raw === raw) return saCache.sa;
+  try{
+    const sa = JSON.parse(raw);
+    if(!sa.client_email || !sa.private_key) return null;
+    saCache = {raw, sa};
+    return sa;
+  }catch(_){ return null; }
+}
+function pemToPkcs8(pem){
+  const body = String(pem).replace(/\\n/g, '\n')
+    .replace(/-----BEGIN [^-]+-----/, '').replace(/-----END [^-]+-----/, '')
+    .replace(/\s+/g, '');
+  const bin = atob(body);
+  const out = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+async function mintFbToken(env){
+  const sa = serviceAccount(env);
+  if(!sa) return null;
+  try{
+    const key = await crypto.subtle.importKey('pkcs8', pemToPkcs8(sa.private_key),
+      {name:'RSASSA-PKCS1-v1_5', hash:'SHA-256'}, false, ['sign']);
+    const iat = Math.floor(Date.now() / 1000);
+    const header = b64url(enc(JSON.stringify({alg:'RS256', typ:'JWT'})));
+    /* iss/sub/aud/iat/exp/uid 는 예약어라 커스텀 클레임은 claims 안에 넣어야 한다 */
+    const payload = b64url(enc(JSON.stringify({
+      iss: sa.client_email, sub: sa.client_email, aud: FB_TOKEN_AUD,
+      iat, exp: iat + 3600, uid: 'wm-editor', claims: {editor: true}
+    })));
+    const body = header + '.' + payload;
+    const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, enc(body));
+    return body + '.' + b64url(new Uint8Array(sig));
+  }catch(err){
+    console.error('Firebase 커스텀 토큰 발급 실패', err && err.message);
+    return null;                       // AI 기능은 계속 되게 둔다
+  }
 }
 
 function bearer(request){

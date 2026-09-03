@@ -553,6 +553,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
 <div id="toasts"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 'use strict';
@@ -824,6 +825,7 @@ async function apiAuth(code){
   if(r.status === 401) return null;                 // 코드 불일치
   if(!r.ok || !d?.token) throw new Error(d?.error?.message || ('서버 오류 ' + r.status));
   setToken(d.token, d.exp);
+  if(d.fbToken) fbSignIn(d.fbToken);       // 기다리지 않는다 — 실패해도 편집·AI 는 계속 된다
   return d.token;
 }
 
@@ -840,6 +842,7 @@ async function apiPost(path, body){
   const d = await r.json().catch(() => null);
   if(r.status === 401){
     clearToken();
+    fbSignOut();
     if(editMode) setEditMode(false);
     throw new Error('세션이 만료되었습니다. 🔒 버튼으로 다시 잠금 해제해주세요');
   }
@@ -1178,6 +1181,39 @@ function makeDefaultTab(){
  *  - 개별 항목 diff 전송(set), child_* 리스너 수신, _w 에코 무시
  * ================================================================== */
 let fbApp = null, fbDb = null, fbRoot = null, fbReady = false, fbAppSeq = 0;
+let fbAuthed = false;                    // Firebase 편집 세션(커스텀 토큰 로그인) 여부
+
+/* §2-4 Firebase 편집 세션 — 마스터 코드 검증에 성공하면 Worker 가 Firebase 커스텀 토큰을
+   함께 내려준다. 그걸로 로그인해야 보안 규칙이 auth.token.editor 로 편집자를 식별할 수 있다.
+   ⚠ Worker 에 FIREBASE_SERVICE_ACCOUNT 가 없으면 fbToken 이 오지 않고, 아래 함수들은
+      조용히 아무것도 하지 않는다 — 규칙을 조이기 전까지는 지금까지처럼 동작한다. */
+const fbAuthReady = () => !!fbApp && typeof firebase !== 'undefined' && !!firebase.auth;
+async function fbSignIn(fbToken){
+  if(!fbToken || !fbAuthReady()) return false;
+  try{
+    await fbApp.auth().signInWithCustomToken(fbToken);
+    fbAuthed = true;
+    return true;
+  }catch(err){
+    console.error('Firebase 편집 세션 로그인 실패', err);
+    toast('Firebase 편집 권한을 얻지 못했습니다 — 저장이 막힐 수 있습니다', true);
+    return false;
+  }
+}
+async function fbSignOut(){
+  fbAuthed = false;
+  if(!fbAuthReady()) return;
+  try{ await fbApp.auth().signOut(); }catch(_){}
+}
+/* 편집 토큰은 12시간이지만 Firebase 커스텀 토큰은 1시간짜리라, 새로고침·재접속 때
+   Worker 에서 새로 받아 로그인한다. 로그인 뒤에는 SDK 가 알아서 세션을 갱신한다. */
+async function fbRefreshSession(){
+  if(!getToken() || !fbAuthReady()) return;
+  try{
+    const d = await apiPost('/api/fbtoken', {});
+    if(d && d.fbToken) await fbSignIn(d.fbToken);
+  }catch(_){ /* 503(서비스 계정 미설정) 등 — 조용히 넘어간다 */ }
+}
 let fbUnsubs = [];        // 활성 탭 리스너 [ref, event, cb]
 let fbGlobalUnsubs = [];  // tabList / .info 리스너
 let fbSnap = {meta:null, nodes:{}, edges:{}, events:{}}; // 서버에 반영된 상태 스냅샷(활성 탭)
@@ -4032,7 +4068,7 @@ function updateModeUI(){
 }
 
 async function toggleLock(){
-  if(editMode){ setEditMode(false); clearToken(); toast('보기 전용 모드로 전환했습니다'); return; }
+  if(editMode){ setEditMode(false); clearToken(); fbSignOut(); toast('보기 전용 모드로 전환했습니다'); return; }
   if(!API_BASE){ toast('이 파일의 API_BASE(서버 주소)가 설정되지 않았습니다 — 관리자에게 문의', true); return; }
   const ov = openModal({
     title:'🔓 마스터 코드로 잠금 해제',
@@ -4518,6 +4554,7 @@ async function main(){
   seedUndo();                              // 되돌리기 기준점(탭별 + 구조)
   if(getToken()) editMode = true;          // 같은 세션(탭) 안에서는 새로고침해도 잠금 해제 유지
   if(editMode) sweepOrphanTabs();          // setEditMode 를 거치지 않는 복원 경로라 청소를 직접 예약
+  if(editMode && fbReady) fbRefreshSession();   // 커스텀 토큰은 1시간짜리라 새로 받아 로그인한다
   updateModeUI();
   renderTabs(); renderAll(); zoomFit();
   if(fbReady) attachTab(activeTabId);

@@ -99,5 +99,50 @@ r = await call('/nope', {method:'GET'});
 T('API 외 경로 404', r.status === 404);
 
 globalThis.fetch = realFetch;
+/* ---- Firebase 커스텀 토큰 + /api/auth 오리진 강화 ---- */
+import {generateKeyPairSync, createVerify} from 'node:crypto';
+const {publicKey, privateKey} = generateKeyPairSync('rsa', {modulusLength: 2048,
+  publicKeyEncoding: {type:'spki', format:'pem'}, privateKeyEncoding: {type:'pkcs8', format:'pem'}});
+const saEnv = {...env, FIREBASE_SERVICE_ACCOUNT: JSON.stringify({
+  client_email: 'wm@test.iam.gserviceaccount.com', private_key: privateKey})};
+
+/* 서비스 계정이 없으면 fbToken 없이 지금까지처럼 동작해야 한다 (앱이 깨지지 않게) */
+r = await call('/api/auth', {body:{code:'my-secret-code-123'}});
+const noSa = await r.json();
+T('서비스 계정 미설정 — token 은 그대로, fbToken 은 생략', r.status === 200 && !!noSa.token && noSa.fbToken === undefined);
+
+r = await call('/api/auth', {body:{code:'my-secret-code-123'}}, saEnv);
+const withSa = await r.json();
+T('서비스 계정 설정 — fbToken 함께 발급', r.status === 200 && typeof withSa.fbToken === 'string' && withSa.fbToken.split('.').length === 3);
+
+const [h64, p64, s64] = String(withSa.fbToken || '..').split('.');
+const un = b => Buffer.from(String(b).replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+const head = JSON.parse(un(h64).toString('utf8') || '{}');
+const clm = JSON.parse(un(p64).toString('utf8') || '{}');
+T('RS256 헤더', head.alg === 'RS256' && head.typ === 'JWT');
+T('Identity Toolkit 대상 + 고정 uid + editor 클레임',
+  clm.aud === 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit' &&
+  clm.uid === 'wm-editor' && clm.claims && clm.claims.editor === true, clm);
+T('발급자 = 서비스 계정 이메일', clm.iss === 'wm@test.iam.gserviceaccount.com' && clm.sub === clm.iss);
+T('1시간 만료', clm.exp - clm.iat === 3600 && clm.iat <= Math.floor(Date.now()/1000) + 5);
+T('서명이 서비스 계정 개인키로 검증됨',
+  createVerify('RSA-SHA256').update(h64 + '.' + p64).verify(publicKey, un(s64)));
+
+/* 재발급은 반드시 편집 토큰 뒤에 있어야 한다 */
+r = await call('/api/fbtoken', {}, saEnv);
+T('/api/fbtoken 은 토큰 없으면 401', r.status === 401);
+r = await call('/api/fbtoken', {headers:{authorization:'Bearer ' + withSa.token}}, saEnv);
+T('/api/fbtoken 재발급', r.status === 200 && typeof (await r.json()).fbToken === 'string');
+r = await call('/api/fbtoken', {headers:{authorization:'Bearer ' + noSa.token}});
+T('서비스 계정 없으면 503 안내', r.status === 503);
+
+/* 마스터 코드 검증은 브라우저 페이지에서 온 요청으로 한정 (curl 무차별 대입 표면 축소) */
+r = await call('/api/auth', {body:{code:'my-secret-code-123'}, origin:''});
+T('Origin 없는 /api/auth 는 403', r.status === 403);
+r = await call('/api/health', {method:'GET', origin:''});
+T('다른 경로는 Origin 없어도 그대로 통과', r.status === 200);
+r = await call('/api/auth', {body:{code:'my-secret-code-123'}, origin:''}, {...env, ALLOWED_ORIGINS:'*'});
+T('와일드카드 허용이면 Origin 없어도 통과(개발용)', r.status === 200);
+
 console.log('\n결과: ' + pass + ' 통과 / ' + fail + ' 실패');
 process.exit(fail ? 1 : 0);
