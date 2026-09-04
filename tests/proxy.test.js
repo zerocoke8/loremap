@@ -31,7 +31,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
  T('코드는 브라우저에 저장 안 됨', !w.localStorage.getItem('wm_mh') && !Object.keys(w.localStorage).some(k=>/mh|code/.test(k)));
  doc.getElementById('chatText').value='세계관 알려줘'; doc.getElementById('chatSend').click(); await wait(80);
  const c=calls.find(c=>c.url.endsWith('/api/claude'));
- T('AI 호출이 프록시로 감 (모델·시스템·메시지, 키 없음)', !!c && c.url==='https://api.test/api/claude' && JSON.parse(c.init.body).model==='claude-opus-4-6' && !!JSON.parse(c.init.body).system && !c.init.headers['x-api-key']);
+ T('AI 호출이 프록시로 감 (모델·시스템·메시지, 키 없음)', !!c && c.url==='https://api.test/api/claude' && JSON.parse(c.init.body).model===E('AI_MODEL') && !!JSON.parse(c.init.body).system && !c.init.headers['x-api-key']);
  T('AI 답변 표시', E("tabs[0]._chat.some(m=>m.role==='assistant'&&m.content==='AI 답변')"));
  const w2=boot(x=>{x.sessionStorage.setItem('wm_tok','TOK');x.sessionStorage.setItem('wm_tok_exp',String(Date.now()+3600e3));}); await wait(300);
  T('새로고침 후 같은 세션이면 편집 모드 유지', w2.eval('editMode')===true && w2.document.body.classList.contains('edit'));

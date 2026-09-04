@@ -80,6 +80,7 @@ function corsHeaders(origin, env){
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Expose-Headers': 'X-WM-Upstream',   // 브라우저가 표식을 읽을 수 있게
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin'
@@ -240,7 +241,10 @@ async function handleClaude(request, env, cors){
   }
   return new Response(text, {
     status: r.status,
-    headers:{...cors, 'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store'}
+    /* X-WM-Upstream: 이 응답이 Anthropic 에서 그대로 넘어온 것이라는 표식.
+       없으면 Worker 나 그 앞단(Cloudflare 등)이 만든 응답이다 — 오류 진단의 갈림길. */
+    headers:{...cors, 'X-WM-Upstream':'anthropic',
+             'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store'}
   });
 }
 
@@ -262,7 +266,8 @@ async function handleGemini(request, env, cors){
   const text = await r.text();
   return new Response(text, {
     status: r.status,
-    headers:{...cors, 'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store'}
+    headers:{...cors, 'X-WM-Upstream':'gemini',
+             'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store'}
   });
 }
 

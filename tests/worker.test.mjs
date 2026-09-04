@@ -84,6 +84,11 @@ r = await call('/api/claude', {headers:H, body:{model:'gpt-x', messages:[]}});
 T('모델 ID 검증', r.status === 400);
 r = await call('/api/claude', {headers:H, body:{model:'claude-opus-4-6'}});
 T('messages 누락 400', r.status === 400);
+r = await call('/api/claude', {headers:{authorization:'Bearer '+auth.token}, body:{model:'claude-opus-5', messages:[{role:'user',content:'hi'}]}});
+T('업스트림 표식 헤더', r.headers.get('X-WM-Upstream') === 'anthropic');
+T('표식을 브라우저가 읽을 수 있게 노출', (r.headers.get('Access-Control-Expose-Headers')||'').includes('X-WM-Upstream'));
+r = await call('/api/auth', {body:{code:'nope'}});
+T('프록시가 만든 오류에는 표식이 없다', r.headers.get('X-WM-Upstream') === null);
 T('응답 CORS 헤더', r.headers.get('Access-Control-Allow-Origin') === ORIGIN);
 
 /* Gemini 프록시 */

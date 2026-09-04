@@ -634,7 +634,7 @@ function sanitizeTab(t){
 }
 
 /* §6-1 AI 모델 — 한 곳에서 관리 */
-const AI_MODEL  = 'claude-opus-4-6';
+const AI_MODEL  = 'claude-opus-5';
 const IMG_MODEL = 'gemini-3.1-flash-image-preview';
 
 /* ==================================================================
@@ -850,8 +850,11 @@ async function apiPost(path, body){
     /* 진단을 위해 상태 코드와 오류 종류까지 남긴다 — 메시지만으로는 원인을 못 좁힌다 */
     const em = d?.error?.message || ('서버 오류 ' + r.status);
     const et = d?.error?.type ? ' · ' + d.error.type : '';
-    console.error('API 오류', r.status, path, d);
-    throw new Error(em + ' (HTTP ' + r.status + et + ')');
+    /* 표식이 있으면 AI 업스트림이 거절한 것, 없으면 Worker 나 그 앞단이 막은 것 */
+    const up = r.headers.get('X-WM-Upstream');
+    const src = up ? ' · ' + up : ' · 프록시';
+    console.error('API 오류', r.status, path, {출처: up || 'Worker/앞단', 응답: d});
+    throw new Error(em + ' (HTTP ' + r.status + et + src + ')');
   }
   return d;
 }

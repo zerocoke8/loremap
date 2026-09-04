@@ -43,7 +43,7 @@
 - 💾 `worldmind-export.json` 다운로드 / 📂 로드(확인 모달·개수 미리보기·덮어쓰기 경고 → 전체 교체 + Firebase 동기화 + 줌핏). **두 버튼은 ⚙ 설정 안 "데이터" 구역에 있다**(툴바에서 이동).
 
 ## §6 AI
-- 텍스트: Anthropic Messages API, 모델 상수 `AI_MODEL='claude-opus-4-6'` 한 곳 관리. (현재 Worker 프록시 경유)
+- 텍스트: Anthropic Messages API, 모델 상수 `AI_MODEL='claude-opus-5'` 한 곳 관리. (현재 Worker 프록시 경유)
 - 이미지: Gemini `IMG_MODEL='gemini-3.1-flash-image-preview'`, `generationConfig.responseModalities:['IMAGE','TEXT']`.
 - §6-3 JSON 3단 방어: ①브래킷 카운팅 추출(문자열/이스케이프 인식) ②`JSON.parse` 직접 시도 우선 ③부분 복구(배열 내 개별 객체).
 - §6-4 주인공 방문·사건 생성은 기존 노드 이름만 사용(시스템+유저 프롬프트 양쪽에 이름 목록 제약). 컨텍스트 빌더 재사용.
