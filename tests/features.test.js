@@ -304,11 +304,11 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     await wait(30);
     const ov = doc.querySelector('.ov');
     T('8-5 타입 관리 모달 — 현재 타입 목록', ov.querySelectorAll('.ty-row').length === 7);
-    ov.querySelectorAll('.ty-row input')[0].value = '대륙';
+    ov.querySelectorAll('.ty-row .ty-label')[0].value = '대륙';
     ov.querySelector('#tyAdd').click();
     await wait(20);
     T('8-6 + 로 타입 추가', ov.querySelectorAll('.ty-row').length === 8);
-    ov.querySelectorAll('.ty-row input')[7].value = '유물';
+    ov.querySelectorAll('.ty-row .ty-label')[7].value = '유물';
     ov.querySelector('[data-a=s]').click();
     await wait(40);
     T('8-7 이름 변경 저장', E("typeList(curTab())[0].label") === '대륙');
@@ -736,6 +736,67 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T("14-16 카드 배경 블러 제거", !w.getComputedStyle(doc.querySelector('[data-id="f1"]')).backdropFilter ||
       w.getComputedStyle(doc.querySelector('[data-id="f1"]')).backdropFilter === "none");
     E("tabs[0].nodes[0]._exp = false; clearSel(); renderAll();");
+  }
+
+  /* ---- 15. 복수 타입 + 구조화 속성 ---- */
+  {
+    E("clearSel(); tabs.length = 1; tabs[0].nodes.length=0; tabs[0].edges.length=0; activeTabId = tabs[0].id;");
+    E("tabs[0].nodeTypes = DEFAULT_TYPES.map(x=>({...x}));");
+    /* 구버전 데이터: types·props 가 아예 없는 노드 */
+    E("tabs[0].nodes.push({id:'g1', type:'char', name:'레온', desc:'기사', x:1000, y:1000});");
+    E("sanitizeTab(tabs[0]); setEditMode(true); commit(); renderAll();");
+    await wait(30);
+    T("15-1 구 데이터에 types 자동 보정", E("JSON.stringify(nodeById(curTab(),'g1').types)") === '["char"]');
+    T("15-2 구 데이터에 props 자동 보정", E("Array.isArray(nodeById(curTab(),'g1').props)") && E("nodeById(curTab(),'g1').props.length") === 0);
+    T("15-3 type 은 types[0] 과 동기", E("nodeById(curTab(),'g1').type") === "char");
+
+    /* 타입에 기본 속성을 정의 */
+    E("openTypeManager()"); await wait(30);
+    const tm = doc.querySelector(".ov");
+    tm.querySelectorAll(".ty-row .ty-fields")[3].value = "나이, 소속, 생사";   // 인물
+    tm.querySelector("[data-a=s]").click();
+    await wait(40);
+    T("15-4 타입에 기본 속성 저장", E("JSON.stringify(typeFields(curTab(),'char'))") === '["나이","소속","생사"]');
+
+    /* 노드 편집: 기본 속성이 빈칸으로 깔린다 */
+    E("openNodeModal(nodeById(curTab(),'g1'))"); await wait(80);
+    const nm = doc.querySelector(".ov");
+    T("15-5 기본 속성이 빈칸으로 깔림", nm.querySelectorAll(".prop-row").length === 3);
+    T("15-6 항목 이름이 템플릿대로", [...nm.querySelectorAll(".prop-row .pk")].map(i => i.value).join(",") === "나이,소속,생사");
+
+    /* 값 입력 + 추가 타입 지정 */
+    nm.querySelectorAll(".prop-row .pv")[0].value = "32";
+    nm.querySelectorAll(".prop-row .pv")[1].value = "은빛 기사단";
+    const chip = [...nm.querySelectorAll("#nmTypes .chip")].find(c => c.textContent === "집단");
+    T("15-7 추가 타입 칩 목록에 주 타입은 빠짐", ![...nm.querySelectorAll("#nmTypes .chip")].some(c => c.textContent === "인물"));
+    chip.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(20);
+    T("15-8 칩을 누르면 켜짐", nm.querySelector("#nmTypes .chip.on") !== null);
+    nm.querySelector("[data-a=s]").click();
+    await wait(40);
+
+    const g = () => E("nodeById(curTab(),'g1')");
+    T("15-9 값이 비어도 항목은 유지(템플릿 자리)", E("nodeById(curTab(),'g1').props.length") === 3);
+    T("15-10 속성 값 저장", E("propGet(nodeById(curTab(),'g1'), '나이')") === "32" &&
+      E("propGet(nodeById(curTab(),'g1'), '소속')") === "은빛 기사단");
+    T("15-11 복수 타입 저장", E("JSON.stringify(nodeById(curTab(),'g1').types)") === '["char","group"]');
+    T("15-12 주 타입은 여전히 types[0]", E("nodeById(curTab(),'g1').type") === "char");
+
+    /* 카드 표시 */
+    T("15-13 카드에 타입이 여러 개", doc.querySelectorAll('[data-id="g1"] .nt').length === 2);
+    T("15-14 카드 요약엔 값이 있는 것만", doc.querySelectorAll('[data-id="g1"] .npi').length === 2);
+
+    /* 저장·동기화 형식 */
+    E("saveLocal()");
+    const saved = JSON.parse(w.localStorage.getItem("wm_tabs")).tabs[0].nodes.find(n => n.id === "g1");
+    T("15-15 저장에 types·props 포함", Array.isArray(saved.types) && saved.types.length === 2 && saved.props.length === 3);
+    T("15-16 저장 속성은 k·v 만", saved.props.every(p => Object.keys(p).sort().join(",") === "k,v"));
+    const fb = E("JSON.stringify(normFB('nodes', nodeById(curTab(),'g1')))");
+    T("15-17 Firebase 정규화에도 포함", fb.includes('"types"') && fb.includes('"props"'));
+
+    /* 되돌리기 */
+    E("doUndo()"); await wait(40);
+    T("15-18 속성 편집도 되돌리기 1단계", E("nodeById(curTab(),'g1').props.length") === 0);
   }
 
   done();

@@ -183,7 +183,13 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .node.drag{cursor:grabbing;opacity:.92}
 .nh{display:flex;align-items:center;gap:6px;margin-bottom:5px}
 .nn{font-size:13.5px;font-weight:500;line-height:1.35;word-break:keep-all;overflow-wrap:anywhere}
+.nh{flex-wrap:wrap}
 .nt{font-size:10px;color:var(--text2);opacity:.85;border:1px solid var(--line-faint);border-radius:8px;padding:1px 6px;flex:none}
+/* 카드에 보이는 속성 요약 — 최대 4개, 나머지는 상세에서 */
+.np{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.npi{font-size:10.5px;color:var(--text2);background:var(--bg3);border-radius:7px;padding:1px 6px;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.npi b{color:var(--text3);font-weight:500;margin-right:4px}
 .nd{
   display:none;margin-top:8px;padding-top:7px;font-size:12px;line-height:1.6;color:var(--text2);
   border-top:1px solid var(--line-faint);word-break:keep-all;overflow-wrap:anywhere;
@@ -253,6 +259,14 @@ body.edit div.eo,body.edit span.eo{display:flex}
 #pickBanner button.go:hover{background:rgba(212,169,71,.14)}
 #pickBanner button:disabled{opacity:.45;cursor:not-allowed}
 .imp-drop{outline:2px dashed var(--accent2);outline-offset:-6px}
+.hint-inline{color:var(--text3);font-size:11px;font-weight:400;margin-left:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--border2);border-radius:999px;padding:4px 11px;font-size:12px;
+  background:var(--bg3);color:var(--text3)}
+.chip.on{border-color:var(--accent2);color:var(--text);background:rgba(124,106,247,.16)}
+.prop-row{display:flex;gap:6px;margin-bottom:6px}
+.prop-row .pk{flex:0 0 34%;min-width:0}
+.prop-row .pv{flex:1;min-width:0}
 .ty-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
 .ty-dot{width:15px;height:15px;border-radius:5px;flex:none;border:1.5px solid rgba(0,0,0,.25)}
 .ty-row input{flex:1;min-width:0}
@@ -643,6 +657,19 @@ const SHOT = {bg:'#ffffff', text:'#1a1a20', text2:'#5a5a68', edge:'#7c7c90'};
 
 /* 테마별 테두리·배경색 — 라이트는 진한 테두리+옅은 배경, 다크는 밝은 테두리+어두운 배경 */
 function typeColors(tab, key){ return typeColorsAt(typeIndexOf(tab, key)); }
+/* 노드가 가진 타입 목록(주 타입이 맨 앞). 색·정렬은 항상 types[0] = type 을 쓴다 */
+function nodeTypes(n){ return (Array.isArray(n.types) && n.types.length) ? n.types : [n.type]; }
+function nodeTypeLabels(tab, n){ return nodeTypes(n).map(k => typeLabel(tab, k)); }
+/* 타입에 정의된 기본 속성 이름들 — 새 노드에 빈칸으로 깔아준다 */
+function typeFields(tab, key){
+  const t = typeList(tab).find(x => x.key === key);
+  return (t && Array.isArray(t.fields)) ? t.fields : [];
+}
+function propGet(n, k){
+  const p = (n.props || []).find(x => x.k === k);
+  return p ? p.v : '';
+}
+
 /* 새 타입 key — 라벨과 독립적인 안정 식별자 */
 function newTypeKey(){ return 'ty' + (idC++); }
 
@@ -653,10 +680,26 @@ function sanitizeTab(t){
   }else{
     t.nodeTypes = t.nodeTypes
       .filter(x => x && x.key)
-      .map(x => ({key: String(x.key), label: String(x.label ?? '무제').slice(0, 20)}));
+      .map(x => ({key: String(x.key), label: String(x.label ?? '무제').slice(0, 20),
+                 fields: Array.isArray(x.fields)
+                   ? x.fields.map(f => String(f).slice(0, 24)).filter(Boolean).slice(0, 20) : []}));
     if(!t.nodeTypes.length) t.nodeTypes = DEFAULT_TYPES.map(x => ({...x}));
   }
   if(!t.nodes) t.nodes = [];
+  /* 노드: 복수 타입(types)과 속성(props) 보정. 구 데이터에는 둘 다 없다.
+     ⚠ type 은 항상 types[0] 과 같게 유지한다 — 색·정렬·AI 프롬프트가 전부 type 을 읽는다. */
+  t.nodes.forEach(n => {
+    const keys = t.nodeTypes.map(x => x.key);
+    let ts = Array.isArray(n.types) ? n.types : (n.type ? [n.type] : []);
+    ts = ts.map(String).filter((k, i, a) => keys.includes(k) && a.indexOf(k) === i);
+    if(!ts.length) ts = [n.type && keys.includes(n.type) ? n.type : keys[keys.length - 1]];
+    n.types = ts;
+    n.type = ts[0];
+    n.props = (Array.isArray(n.props) ? n.props : [])
+      .filter(p => p && String(p.k ?? '').trim())
+      .map(p => ({k: String(p.k).slice(0, 24), v: String(p.v ?? '').slice(0, 300)}))
+      .slice(0, 40);
+  });
   if(!t.edges) t.edges = [];
   if(!t.events) t.events = [];
   if(!t.refImages) t.refImages = [];
@@ -1108,7 +1151,9 @@ function parseFbConfig(txt){
 
 /* 저장용 클린 사본 — _exp/_aiPreview/_w/_chat 등 런타임 필드 제외 (화이트리스트) */
 function cleanNodeLS(n){
-  return {id:n.id, type:n.type, name:n.name ?? '', desc:n.desc ?? '',
+  return {id:n.id, type:n.type, types:(n.types || [n.type]).slice(),
+          props:(n.props || []).map(p => ({k:p.k, v:p.v})),
+          name:n.name ?? '', desc:n.desc ?? '',
           x:Math.round(n.x ?? 0), y:Math.round(n.y ?? 0)};
 }
 function cleanEdgeLS(e){
@@ -1269,7 +1314,10 @@ function setStatus(cls, txt){
 /* 필드 순서를 고정한 정규화 — 스냅샷 비교의 기준 */
 function normFB(kind, d){
   d = d || {};
-  if(kind === 'nodes')  return {type:d.type||'custom', name:d.name??'', desc:d.desc??'', x:Math.round(d.x||0), y:Math.round(d.y||0)};
+  if(kind === 'nodes')  return {type:d.type||'custom',
+                                types:Array.isArray(d.types) && d.types.length ? d.types.slice() : [d.type||'custom'],
+                                props:(Array.isArray(d.props) ? d.props : []).map(p => ({k:String(p.k??''), v:String(p.v??'')})),
+                                name:d.name??'', desc:d.desc??'', x:Math.round(d.x||0), y:Math.round(d.y||0)};
   if(kind === 'edges')  return {from:d.from||'', to:d.to||'', label:d.label??'', desc:d.desc??'', isParent:!!d.isParent};
   return {time:d.time??'', body:d.body??'', order:d.order??0};
 }
@@ -1872,8 +1920,11 @@ function renderNodes(){
     el.style.setProperty('--c', tc.border);
     el.style.setProperty('--c-bg', tc.bg);
     el.innerHTML =
-      `<div class="nh"><span class="nt">${escHtml(typeLabel(tab, n.type))}</span></div>` +
+      `<div class="nh">${nodeTypeLabels(tab, n).map(l => `<span class="nt">${escHtml(l)}</span>`).join('')}</div>` +
       `<div class="nn">${escHtml(n.name || '(이름 없음)')}</div>` +
+      (n.props && n.props.some(p => p.v)
+        ? `<div class="np">${n.props.filter(p => p.v).slice(0,4).map(p => `<span class="npi"><b>${escHtml(p.k)}</b>${escHtml(p.v)}</span>`).join('')}</div>`
+        : '') +
       `<div class="nd">${escHtml(n.desc || '설명이 없습니다.').replace(/\n/g,'<br>')}</div>`;
     wireNode(el, n);
     nodesEl.appendChild(el);
@@ -2384,38 +2435,114 @@ function openEdgeMenu(ed, x, y){
 function openNodeModal(node, presetPos){
   if(!reqEdit()) return;
   const isNew = !node;
+  const tab = curTab();
+  const list = typeList(tab);
+  /* 주 타입은 맨 앞. 색·정렬이 이 값을 쓰므로 항상 하나는 있어야 한다 */
+  let types = isNew ? [list[list.length - 1].key] : nodeTypes(node).slice();
+  let props = isNew ? [] : (node.props || []).map(p => ({...p}));
   const ov = openModal({
-    title: isNew ? '노드 추가' : '노드 편집',
+    title: isNew ? '노드 추가' : '노드 편집', wide:true,
     body: `
-      <div><label>타입</label><select id="nmType">
-        ${typeList(curTab()).map((ty, i) => `<option value="${escHtml(ty.key)}" ${(node ? node.type===ty.key : i===typeList(curTab()).length-1) ? 'selected':''}>${escHtml(ty.label)}</option>`).join('')}
+      <div><label>주 타입 <span class="hint-inline">색과 정렬 기준</span></label><select id="nmType">
+        ${list.map(ty => `<option value="${escHtml(ty.key)}">${escHtml(ty.label)}</option>`).join('')}
       </select></div>
-      <div><label>이름</label><input id="nmName" maxlength="60" value="${escHtml(node?.name || '')}" placeholder="예: 은빛 탑"></div>
-      <div><label>설명</label><textarea id="nmDesc" rows="5" placeholder="이 요소에 대한 설정을 적어주세요">${escHtml(node?.desc || '')}</textarea></div>`,
+      <div><label>추가 타입 <span class="hint-inline">여러 개를 겸할 수 있습니다</span></label>
+        <div id="nmTypes" class="chips"></div></div>
+      <div><label>이름</label><input id="nmName" maxlength="60" placeholder="예: 은빛 탑"></div>
+      <div><label>속성 <span class="hint-inline">나이·소속처럼 항목으로 관리할 값</span></label>
+        <div id="nmProps"></div>
+        <button class="btn" id="nmPropAdd" style="width:100%;margin-top:4px">+ 속성 추가</button></div>
+      <div><label>설명</label><textarea id="nmDesc" rows="5" placeholder="이 요소에 대한 설정을 적어주세요"></textarea></div>`,
     footer: `<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="s">저장</button>`
   });
+  ov.querySelector('#nmName').value = node?.name || '';
+  ov.querySelector('#nmDesc').value = node?.desc || '';
+  ov.querySelector('#nmType').value = types[0];
+
+  const chipsEl = ov.querySelector('#nmTypes');
+  const propsEl = ov.querySelector('#nmProps');
+  const syncProps = () => {
+    propsEl.querySelectorAll('.prop-row').forEach((r, i) => {
+      if(!props[i]) return;
+      props[i].k = r.querySelector('.pk').value;
+      props[i].v = r.querySelector('.pv').value;
+    });
+  };
+  const drawChips = () => {
+    const primary = ov.querySelector('#nmType').value;
+    chipsEl.innerHTML = list.filter(ty => ty.key !== primary).map(ty =>
+      `<button class="chip${types.includes(ty.key) ? ' on' : ''}" data-k="${escHtml(ty.key)}">${escHtml(ty.label)}</button>`).join('');
+  };
+  const drawProps = () => {
+    propsEl.innerHTML = props.map((p, i) =>
+      `<div class="prop-row">` +
+        `<input class="pk" placeholder="항목" maxlength="24" value="${escHtml(p.k)}">` +
+        `<input class="pv" placeholder="값" maxlength="300" value="${escHtml(p.v)}">` +
+        `<button class="ty-btn dngr" data-i="${i}" title="삭제">×</button>` +
+      `</div>`).join('');
+  };
+  /* 타입이 정의한 기본 속성 중 아직 없는 것을 빈칸으로 깔아준다 */
+  const applyTemplate = () => {
+    syncProps();
+    let added = 0;
+    types.forEach(k => typeFields(tab, k).forEach(f => {
+      if(!props.some(p => p.k === f)){ props.push({k:f, v:''}); added++; }
+    }));
+    if(added) drawProps();
+  };
+  drawChips(); drawProps(); applyTemplate();
+
+  ov.querySelector('#nmType').onchange = e => {
+    types = [e.target.value, ...types.filter(k => k !== e.target.value)];
+    drawChips(); applyTemplate();
+  };
+  chipsEl.addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if(!b) return;
+    const k = b.dataset.k;
+    types = types.includes(k) ? types.filter(x => x !== k) : [...types, k];
+    drawChips(); applyTemplate();
+  });
+  propsEl.addEventListener('click', e => {
+    const b = e.target.closest('.ty-btn'); if(!b) return;
+    syncProps();
+    props.splice(+b.dataset.i, 1);
+    drawProps();
+  });
+  ov.querySelector('#nmPropAdd').onclick = () => {
+    syncProps();
+    props.push({k:'', v:''});
+    drawProps();
+    const ks = propsEl.querySelectorAll('.pk');
+    const last = ks[ks.length - 1]; if(last) last.focus();
+  };
   setTimeout(() => ov.querySelector('#nmName')?.focus(), 60);   // 열자마자 이름부터 칠 수 있게
   ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
   ov.querySelector('[data-a=s]').onclick = () => {
-    const type = ov.querySelector('#nmType').value;
+    syncProps();
+    const primary = ov.querySelector('#nmType').value;
+    const ts = [primary, ...types.filter(k => k !== primary)];
     const name = ov.querySelector('#nmName').value.trim();
     const desc = ov.querySelector('#nmDesc').value.trim();
     if(!name){ toast('이름을 입력해주세요', true); return; }
+    /* 항목 이름이 빈 속성은 버린다(값만 있는 줄은 의미가 없다) */
+    const ps = props.map(p => ({k:String(p.k).trim().slice(0,24), v:String(p.v).trim().slice(0,300)}))
+                    .filter(p => p.k);
     const t = curTab();
     if(isNew){
       const c = presetPos || viewCenterWorld();
       const j = presetPos ? 0 : 30;          // 커서로 지정한 경우엔 흔들지 않는다
-      const nn = {id:gid(), type, name, desc,
+      const nn = {id:gid(), type:ts[0], types:ts, props:ps, name, desc,
                   x:Math.round(c.x - 100 + (Math.random()*j*2 - j)),
                   y:Math.round(c.y - 35  + (Math.random()*j*2 - j)), _exp:false};
       t.nodes.push(nn);
       sel = {nodeIds:[nn.id], edgeId:null};
     }else{
-      Object.assign(node, {type, name, desc});
+      Object.assign(node, {type:ts[0], types:ts, props:ps, name, desc});
     }
     commit(); renderAll(); closeModal(ov);
   };
 }
+
 
 function openEdgeModal(edge, pre){
   if(!reqEdit()) return;
@@ -3375,7 +3502,12 @@ async function callGemini(prompt, refImgs){
 function buildCtx(tab){
   const nameOf = id => nodeById(tab, id)?.name ?? '?';
   const nodesStr = tab.nodes.filter(n => !n._aiPreview)
-    .map(n => `- ${n.name} (${typeLabel(tab, n.type)})${n.desc ? ': ' + n.desc : ''}`)
+    /* 복수 타입과 구조화 속성까지 넘겨 AI 가 정확히 읽게 한다 */
+    .map(n => {
+      const ts = nodeTypeLabels(tab, n).join('·');
+      const ps = (n.props || []).filter(p => p.v).map(p => `${p.k}: ${p.v}`).join(', ');
+      return `- ${n.name} (${ts})${ps ? ' {' + ps + '}' : ''}${n.desc ? ': ' + n.desc : ''}`;
+    })
     .join('\n') || '(없음)';
   const edgesStr = tab.edges.filter(e => !e._aiPreview)
     .map(e => `- ${nameOf(e.from)} ${e.isParent ? '⊃(부모→자식)' : '↔'} ${nameOf(e.to)} [${e.label || '관계'}]${e.desc ? ': ' + e.desc : ''}`)
@@ -4296,14 +4428,20 @@ function openTypeManager(){
   });
   const listEl = ov.querySelector('#tyList');
   const syncLabels = () => {
-    listEl.querySelectorAll('.ty-row').forEach((r, i) => { if(list[i]) list[i].label = r.querySelector('input').value; });
+    listEl.querySelectorAll('.ty-row').forEach((r, i) => {
+      if(!list[i]) return;
+      list[i].label = r.querySelector('.ty-label').value;
+      list[i].fields = r.querySelector('.ty-fields').value.split(',')
+        .map(x => x.trim().slice(0, 24)).filter(Boolean).slice(0, 20);
+    });
   };
   const draw = () => {
     listEl.innerHTML = list.map((t, i) =>
       `<div class="ty-row">` +
         `<span class="ty-tier">${i+1}</span>` +
         `<span class="ty-dot" style="background:${typeColorsAt(i).bg};border-color:${typeColorsAt(i).border}"></span>` +
-        `<input value="${escHtml(t.label)}" maxlength="20" placeholder="타입 이름">` +
+        `<input class="ty-label" value="${escHtml(t.label)}" maxlength="20" placeholder="타입 이름">` +
+      `<input class="ty-fields" value="${escHtml((t.fields||[]).join(', '))}" placeholder="기본 속성 (쉼표로: 나이, 소속)">` +
         `<button class="ty-btn" data-a="up" data-i="${i}" ${i===0?'disabled':''} title="위로">↑</button>` +
         `<button class="ty-btn" data-a="dn" data-i="${i}" ${i===list.length-1?'disabled':''} title="아래로">↓</button>` +
         `<button class="ty-btn dngr" data-a="del" data-i="${i}" ${list.length<=1?'disabled':''} title="삭제">×</button>` +
@@ -4329,7 +4467,7 @@ function openTypeManager(){
   });
   ov.querySelector('#tyAdd').onclick = () => {
     syncLabels();
-    list.push({key:newTypeKey(), label:'새 타입'});
+    list.push({key:newTypeKey(), label:'새 타입', fields:[]});
     draw();
     const inputs = listEl.querySelectorAll('input');
     const last = inputs[inputs.length-1]; if(last){ last.focus(); last.select(); }
@@ -4337,7 +4475,7 @@ function openTypeManager(){
   ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
   ov.querySelector('[data-a=s]').onclick = () => {
     syncLabels();
-    list = list.map(t => ({key:t.key, label:(t.label || '').trim().slice(0,20) || '무제'}));
+    list = list.map(t => ({key:t.key, label:(t.label || '').trim().slice(0,20) || '무제', fields:t.fields || []}));
     if(!list.length){ toast('타입은 최소 1개 필요합니다', true); return; }
     /* 사라진 타입의 노드는 최하위 타입으로 옮긴다 — 노드를 잃지 않는 쪽을 택한다 */
     const keep = new Set(list.map(t => t.key));

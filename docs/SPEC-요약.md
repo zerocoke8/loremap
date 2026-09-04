@@ -9,7 +9,9 @@
 
 ## §1 데이터 스키마 (변경 금지)
 - `tabs[]` + `activeTabId`. Tab `{id, title, nodes, edges, events, worldPrompt, refImages(base64 최대 3, 로컬 전용)}`
-- Node `{id, type, name, desc, x, y, _exp(런타임), _aiPreview(런타임)}` — type 은 그 탭 `nodeTypes` 의 key
+- Node `{id, type, types[], props[{k,v}], name, desc, x, y, _exp(런타임), _aiPreview(런타임)}`
+  · `types` = 노드가 겸하는 타입 key 목록. **맨 앞이 주 타입**이고 `type` 은 항상 `types[0]` 과 같게 유지한다(색·정렬·AI 프롬프트가 `type` 을 읽는다).
+  · `props` = 구조화 속성(순서 보존). 값이 비어도 항목은 남는다 — 타입 템플릿 자리표시자이기 때문. 카드 요약에는 값이 채워진 것만 최대 4개.
 - Edge `{id, from, to, label, desc, isParent}` (isParent: from=부모 → to=자식), Event `{id, time, body, order}`
 - `gid()='i'+(idC++)`, `idC=Date.now()`. `sanitizeTab` 필수 통과.
 - Tab `nodeTypes = [{key,label}]` — **탭별 노드 타입**. 배열 순서가 상하위 단계(맨 위=최상위)이고 색은 순서대로 자동 배정하며 이모지는 없다. 새 탭은 기본 7종(world…custom)으로 시작하고, 구 데이터에는 필드가 없으므로 `sanitizeTab` 이 기본 7종으로 채워 기존 `node.type` 과 그대로 맞는다. `key` 는 불변, `label` 만 변경한다.

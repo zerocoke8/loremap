@@ -27,7 +27,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 ## 절대 바꾸면 안 되는 것 (기존 사용자 데이터 호환)
 
 - **데이터 스키마**: Tab{id,title,nodes,edges,events,worldPrompt,nodeTypes,refImages}, Node{id,type,name,desc,x,y}, Edge{id,from,to,label,desc,isParent}, Event{id,time,body,order}. `gid()`='i'+카운터. 런타임 전용 필드는 `_exp`, `_aiPreview`, `_chat`이며 절대 저장하지 않는다(`cleanTab` 화이트리스트).
-- **노드 타입은 탭 데이터**다(`Tab.nodeTypes = [{key,label}]`, 배열 순서 = 상하위 단계, 색은 순서대로 자동 배정, 이모지 없음). 옛 상수 `TL/TI/TC/TYPES`는 없어졌고 `DEFAULT_TYPES`/`typeList/typeLabel/typeColors/typeKeyOr`가 대신한다. **`key`는 `node.type`에 저장되는 값이라 절대 바꾸지 않는다**(label만 변경). 기본 7종의 key(world…custom)는 기존 사용자 데이터 호환을 위해 유지한다.
+- **노드 타입은 탭 데이터**다(`Tab.nodeTypes = [{key,label,fields[]}]` — `fields` 는 그 타입 노드에 기본으로 깔아줄 속성 이름들, 배열 순서 = 상하위 단계, 색은 순서대로 자동 배정, 이모지 없음). 옛 상수 `TL/TI/TC/TYPES`는 없어졌고 `DEFAULT_TYPES`/`typeList/typeLabel/typeColors/typeKeyOr`가 대신한다. **`key`는 `node.type`에 저장되는 값이라 절대 바꾸지 않는다**(label만 변경). 기본 7종의 key(world…custom)는 기존 사용자 데이터 호환을 위해 유지한다.
 - **localStorage 키**: `wm_tabs` = `JSON.stringify({tabs})` 형식 고정. `wm_fbcfg`(수동 Firebase 설정), `wm_theme`, `wm_edgecolor`, `wm_edgeshape`. 옛 키 `wm_k/wm_gk/wm_mh`는 더 이상 쓰지 않지만 지우지도 않는다.
 - **Firebase 경로**: `worldmind/tabList[{id,title}]`, `worldmind/tabs/{tabId}/{meta{title,worldPrompt,_w}, nodes/{id}, edges/{id}, events/{id}}`. 모든 항목에 `_w`=세션 ID(`FB_SID`). 구 포맷 `worldmind/{tabs:[…]}`는 `migrateIfOld`가 자동 이전한다.
 - `sanitizeTab`은 모든 로드 경로가 통과해야 한다.
@@ -48,6 +48,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§5-2 캔버스 단축키` | Tab(`pointerWorld`로 커서 위치 노드 추가) · Delete(`askDeleteSelection`) · Alt 단독 탭(`altSolo`→`startLink`). `shortcutBusy()`가 모달·배너·컨텍스트 메뉴 중 차단 |
 | `§5-14 노드 타입 관리` | `openTypeManager`(탭별 타입 추가·이름변경·순서·삭제). 삭제된 타입의 노드는 최하위 타입으로 이동 |
 | `§5-16 노드 가져오기` | `openImportModal`/`runImport`/`applyImportResult`. `parseDrawio`(mxCell 파싱+압축 해제), `layoutImported`+`freeOrigin`(추가분만 배치 — 기존 좌표 불변) |
+| `§1 노드 스키마` | `nodeTypes(n)`(겸하는 타입 목록) · `nodeTypeLabels` · `typeFields`(타입별 기본 속성) · `propGet`. ⚠ `node.type` 은 `sanitizeTab` 이 항상 `types[0]` 과 동기화하므로 둘을 따로 쓰면 안 된다 |
 | `§5-14 노드 검색` | `runSearch`/`stepSearch`/`centerOnNode`. `searchHits`+`searchIdx`+`searchQuery`(재검색·순회 구분). 강조는 `renderNodes` 가 `.found`/`.cur` 클래스로 |
 | `§5-15 선택 영역 복사` | `copySelection`/`pasteClip`(내부 버퍼 `clipBuf`), `copySelectionImage`(캔버스에 직접 그려 투명 PNG). 연결선은 화면 SVG 의 `d`(M x y Q …)를 그대로 재현한다 |
 | `§5-4 노드 자동 정렬` | `computeRadialLayout`, `tweenTo` |
