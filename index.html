@@ -22,7 +22,7 @@
   --glass:rgba(28,31,46,.96); --ov-bg:rgba(6,7,11,.66); --grid:rgba(157,163,200,.13);
   --line-faint:rgba(255,255,255,.13); --edge:#565d8f; --edge-parent:#8b93c9;
   --icon-shadow:drop-shadow(0 0 6px rgba(0,0,0,.6));
-  --rp-w:320px;
+  --rp-w:480px;
   --c-world:#9b59d6;  --c-world-bg:rgba(74,32,96,.65);
   --c-group:#4a9edd;  --c-group-bg:rgba(26,58,92,.65);
   --c-space:#3ecfb8;  --c-space-bg:rgba(20,70,65,.65);
@@ -351,6 +351,21 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .rp-b{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-height:0}
 .rp-sec{font-size:12px;color:var(--text3);font-weight:500;letter-spacing:.04em;margin-bottom:-4px}
 .btnrow{display:flex;gap:7px;flex-wrap:wrap}
+.rp-empty{color:var(--text3);font-size:13px;line-height:1.7;padding:18px 2px}
+.np-imgs{display:flex;flex-direction:column;gap:8px;margin-bottom:4px}
+.np-imgs img{width:100%;border-radius:10px;border:1px solid var(--border2);display:block}
+.np-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:2px}
+.np-name{font-size:17px;font-weight:600;line-height:1.35;word-break:keep-all;flex:1 1 100%}
+.np-table{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:10px 0 2px;font-size:13px}
+.np-table .pk{color:var(--text3);white-space:nowrap}
+.np-table .pv{color:var(--text);word-break:break-word}
+.np-table .pv.empty{color:var(--text3);opacity:.6}
+.np-desc{margin-top:12px;font-size:13.5px;line-height:1.75;color:var(--text2);
+  white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
+.np-links{display:flex;flex-direction:column;gap:6px}
+.np-link{display:flex;gap:6px;align-items:center}
+.np-link a{flex:1;color:var(--accent2);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.np-link input{flex:1;min-width:0}
 .refgrid{display:flex;gap:8px}
 .ref-slot{
   position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;
@@ -577,6 +592,21 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
       <div class="refgrid" id="refImgs"></div>
       <input type="file" id="refFile" accept="image/*" hidden>
     </div>
+    <div class="rp-b" id="rpNode" hidden>
+      <div id="npEmpty" class="rp-empty">노드를 클릭하면 여기에 자세한 내용이 나옵니다.</div>
+      <div id="npBody" hidden>
+        <div id="npImgs" class="np-imgs" hidden></div>
+        <div class="rp-sec">노드</div>
+        <div id="npHead"></div>
+        <div id="npProps" class="np-table"></div>
+        <div id="npDesc" class="np-desc"></div>
+        <div class="btnrow"><button class="btn eo" id="npEdit">✏️ 편집</button></div>
+        <div class="rp-sec">메모 · 링크</div>
+        <div id="npLinks" class="np-links"></div>
+        <div class="btnrow eo"><button class="btn" id="npLinkAdd">+ 링크 추가</button></div>
+        <textarea id="npMemo" rows="6" class="eo" placeholder="이 노드에 대한 메모 — 자동 저장됩니다"></textarea>
+      </div>
+    </div>
     <div class="rp-b" id="rpChat" hidden>
       <div id="chatLog"></div>
       <div class="chat-in">
@@ -695,6 +725,15 @@ function sanitizeTab(t){
     if(!ts.length) ts = [n.type && keys.includes(n.type) ? n.type : keys[keys.length - 1]];
     n.types = ts;
     n.type = ts[0];
+    n.links = (Array.isArray(n.links) ? n.links : [])
+      .filter(l => l && String(l.url ?? '').trim())
+      .map(l => ({url:String(l.url).slice(0,500), label:String(l.label ?? '').slice(0,60)}))
+      .slice(0, 30);
+    if(n.memo != null) n.memo = String(n.memo).slice(0, 4000);
+    n.imgs = (Array.isArray(n.imgs) ? n.imgs : [])
+      .filter(im => im && im.id)
+      .map(im => ({id:String(im.id), w:+im.w || 0, h:+im.h || 0, cap:String(im.cap ?? '').slice(0,120)}))
+      .slice(0, 20);
     n.props = (Array.isArray(n.props) ? n.props : [])
       .filter(p => p && String(p.k ?? '').trim())
       .map(p => ({k: String(p.k).slice(0, 24), v: String(p.v ?? '').slice(0, 300)}))
@@ -1153,6 +1192,9 @@ function parseFbConfig(txt){
 function cleanNodeLS(n){
   return {id:n.id, type:n.type, types:(n.types || [n.type]).slice(),
           props:(n.props || []).map(p => ({k:p.k, v:p.v})),
+          links:(n.links || []).map(l => ({url:l.url, label:l.label})),
+          memo:n.memo ?? '',
+          imgs:(n.imgs || []).map(im => ({id:im.id, w:im.w, h:im.h, cap:im.cap})),
           name:n.name ?? '', desc:n.desc ?? '',
           x:Math.round(n.x ?? 0), y:Math.round(n.y ?? 0)};
 }
@@ -1317,6 +1359,9 @@ function normFB(kind, d){
   if(kind === 'nodes')  return {type:d.type||'custom',
                                 types:Array.isArray(d.types) && d.types.length ? d.types.slice() : [d.type||'custom'],
                                 props:(Array.isArray(d.props) ? d.props : []).map(p => ({k:String(p.k??''), v:String(p.v??'')})),
+                                links:(Array.isArray(d.links) ? d.links : []).map(l => ({url:String(l.url??''), label:String(l.label??'')})),
+                                memo:d.memo??'',
+                                imgs:(Array.isArray(d.imgs) ? d.imgs : []).map(im => ({id:String(im.id??''), w:+im.w||0, h:+im.h||0, cap:String(im.cap??'')})),
                                 name:d.name??'', desc:d.desc??'', x:Math.round(d.x||0), y:Math.round(d.y||0)};
   if(kind === 'edges')  return {from:d.from||'', to:d.to||'', label:d.label??'', desc:d.desc??'', isParent:!!d.isParent};
   return {time:d.time??'', body:d.body??'', order:d.order??0};
@@ -2191,6 +2236,7 @@ function wireNode(el, n){
       return;
     }
     sel = {nodeIds:[n.id], edgeId:null};
+    openNodePanel();                     // 클릭 = 펼침 + 상세 패널
     n._exp = !n._exp;
     renderAll();
   });
@@ -3539,19 +3585,26 @@ ${c.eventsStr}`;
 /* ==================================================================
  * 우측 패널 (§5-5 ~ §5-7)
  * ================================================================== */
-const RP_TITLES = {world:'🌐 세계관 설정', chat:'💬 세계관 대화', events:'📜 사건 연표'};
+const RP_TITLES = {node:'📄 노드 상세', world:'🌐 세계관 설정', chat:'💬 세계관 대화', events:'📜 사건 연표'};
 
 function openPanel(name){
   if(rpCur === name){ closePanel(); return; }
   rpCur = name;
   rpEl.hidden = false;
   rpTitleEl.textContent = RP_TITLES[name];
-  ['world','chat','events'].forEach(k => {
+  ['node','world','chat','events'].forEach(k => {
     $('#rp' + k[0].toUpperCase() + k.slice(1)).hidden = (k !== name);
   });
   ['btnWorld','btnChat','btnEvents'].forEach(id => $('#' + id).classList.remove('on'));
-  $('#btn' + name[0].toUpperCase() + name.slice(1)).classList.add('on');
+  const b = $('#btn' + name[0].toUpperCase() + name.slice(1));
+  if(b) b.classList.add('on');            // 노드 패널은 툴바 버튼이 없다(노드 클릭으로 연다)
   refreshOpenPanels();
+}
+/* 노드 패널 열기 — 이미 다른 패널이 열려 있어도 노드 쪽으로 바꾼다 */
+function openNodePanel(){
+  if(rpCur === 'node'){ renderNodePanel(); return; }
+  rpCur = null;                          // openPanel 의 토글을 피한다
+  openPanel('node');
 }
 function closePanel(){
   rpCur = null;
@@ -3560,10 +3613,63 @@ function closePanel(){
 }
 function refreshOpenPanels(){
   if(!rpCur) return;
-  if(rpCur === 'world') renderWorldPanel();
+  if(rpCur === 'node') renderNodePanel();
+  else if(rpCur === 'world') renderWorldPanel();
   else if(rpCur === 'chat') renderChat();
   else if(rpCur === 'events') renderEvents();
 }
+
+/* ---------------- §5-16 노드 상세 패널 ----------------
+   위 칸: 클릭한 노드의 이미지·이름·타입·속성·설명
+   아래 칸: 그 노드의 링크와 메모 (자유 영역)
+   이미지는 §5-17 에서 붙는다 — 여기서는 node.imgs 가 있으면 맨 위에 그린다. */
+function panelNode(){
+  const tab = curTab();
+  if(!tab || sel.nodeIds.length !== 1) return null;
+  return nodeById(tab, sel.nodeIds[0]) || null;
+}
+function renderNodePanel(){
+  const tab = curTab();
+  const n = panelNode();
+  const empty = $('#npEmpty'), body = $('#npBody');
+  if(!n){
+    empty.hidden = false; body.hidden = true;
+    empty.textContent = sel.nodeIds.length > 1
+      ? '노드를 하나만 선택하면 자세한 내용이 나옵니다.'
+      : '노드를 클릭하면 여기에 자세한 내용이 나옵니다.';
+    return;
+  }
+  empty.hidden = true; body.hidden = false;
+
+  /* 이미지 — 있으면 맨 위 */
+  const imgs = Array.isArray(n.imgs) ? n.imgs : [];
+  const ie = $('#npImgs');
+  ie.hidden = !imgs.length;
+  ie.innerHTML = imgs.map(im => `<img src="${escHtml(imgUrl(im.id))}" alt="${escHtml(im.cap || n.name || '')}" loading="lazy">`).join('');
+
+  $('#npHead').innerHTML =
+    `<div class="np-head"><div class="np-name">${escHtml(n.name || '(이름 없음)')}</div>` +
+    nodeTypeLabels(tab, n).map(l => `<span class="nt">${escHtml(l)}</span>`).join('') + `</div>`;
+
+  const props = n.props || [];
+  $('#npProps').innerHTML = props.map(p =>
+    `<div class="pk">${escHtml(p.k)}</div>` +
+    `<div class="pv${p.v ? '' : ' empty'}">${escHtml(p.v || '—')}</div>`).join('');
+
+  $('#npDesc').textContent = n.desc || '설명이 없습니다.';
+
+  const links = Array.isArray(n.links) ? n.links : [];
+  $('#npLinks').innerHTML = links.map((l, i) =>
+    `<div class="np-link">` +
+      `<a href="${escHtml(l.url)}" target="_blank" rel="noopener noreferrer">${escHtml(l.label || l.url)}</a>` +
+      `<button class="ty-btn dngr eo" data-i="${i}" title="삭제">×</button>` +
+    `</div>`).join('') || '<div class="hint">아직 링크가 없습니다.</div>';
+
+  const memo = $('#npMemo');
+  if(document.activeElement !== memo) memo.value = n.memo || '';
+}
+/* 이미지 주소 — §5-17 에서 R2 로 바뀐다. 지금은 자리만 잡아둔다. */
+function imgUrl(id){ return API_BASE ? (API_BASE + '/api/img/' + encodeURIComponent(id)) : ''; }
 
 /* ---------------- §5-5 세계관 패널 ---------------- */
 function renderWorldPanel(){
@@ -4674,6 +4780,32 @@ function bindStaticUI(){
     e.target.value = '';
   });
   $('#rpClose').onclick = closePanel;
+  $('#npEdit').onclick = () => { const n = panelNode(); if(n) openNodeModal(n); };
+  $('#npLinkAdd').onclick = () => {
+    if(!reqEdit()) return;
+    const n = panelNode(); if(!n) return;
+    const url = prompt('링크 주소 (https://…)');
+    if(!url || !url.trim()) return;
+    const label = prompt('표시할 이름 (비우면 주소를 그대로)') || '';
+    n.links = [...(n.links || []), {url:url.trim().slice(0,500), label:label.trim().slice(0,60)}];
+    commit(); renderNodePanel();
+  };
+  $('#npLinks').addEventListener('click', e => {
+    const b = e.target.closest('.ty-btn'); if(!b) return;
+    if(!reqEdit()) return;
+    const n = panelNode(); if(!n) return;
+    n.links = (n.links || []).filter((_, i) => i !== +b.dataset.i);
+    commit(); renderNodePanel();
+  });
+  /* 메모는 자동 저장 — 타이핑이 멈추면 커밋한다 */
+  let memoTimer = null;
+  $('#npMemo').addEventListener('input', e => {
+    const n = panelNode(); if(!n) return;
+    if(!editMode) return;
+    n.memo = e.target.value.slice(0, 4000);
+    clearTimeout(memoTimer);
+    memoTimer = setTimeout(() => commit(), 600);
+  });
   $('#wpSave').onclick = () => {
     if(!reqEdit()) return;
     const tab = curTab(); if(!tab) return;

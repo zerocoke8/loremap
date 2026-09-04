@@ -9,7 +9,7 @@
 
 ## §1 데이터 스키마 (변경 금지)
 - `tabs[]` + `activeTabId`. Tab `{id, title, nodes, edges, events, worldPrompt, refImages(base64 최대 3, 로컬 전용)}`
-- Node `{id, type, types[], props[{k,v}], name, desc, x, y, _exp(런타임), _aiPreview(런타임)}`
+- Node `{id, type, types[], props[{k,v}], links[{url,label}], memo, imgs[{id,w,h,cap}], name, desc, x, y, _exp(런타임), _aiPreview(런타임)}`
   · `types` = 노드가 겸하는 타입 key 목록. **맨 앞이 주 타입**이고 `type` 은 항상 `types[0]` 과 같게 유지한다(색·정렬·AI 프롬프트가 `type` 을 읽는다).
   · `props` = 구조화 속성(순서 보존). 값이 비어도 항목은 남는다 — 타입 템플릿 자리표시자이기 때문. 카드 요약에는 값이 채워진 것만 최대 4개.
 - Edge `{id, from, to, label, desc, isParent}` (isParent: from=부모 → to=자식), Event `{id, time, body, order}`
@@ -29,7 +29,7 @@
 - Firebase 설정 파서: 순수 JSON / JS 객체 리터럴 / `const firebaseConfig = {…};` 3형식.
 
 ## §4 레이아웃
-탭바 / 탑바(＋노드 ✨AI노드 🔀정렬 [상태] 🔒 🌐 💬 📜 ⚙ 💾 📂) / 4000×4000 캔버스 팬·줌(0.15~3) / 우측 패널 320px.
+탭바 / 탑바(＋노드 ✨AI노드 🔀정렬 [상태] 🔒 🌐 💬 📜 ⚙ 💾 📂) / 4000×4000 캔버스 팬·줌(0.15~3) / 우측 패널 480px.
 
 ## §5 기능
 - 탭 추가·복제(딥카피+ID 재발급+엣지 리맵, 제목 `복사_원본`)·삭제(마지막 탭 불가).

@@ -799,5 +799,82 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T("15-18 속성 편집도 되돌리기 1단계", E("nodeById(curTab(),'g1').props.length") === 0);
   }
 
+  /* ---- 16. 노드 상세 패널 ---- */
+  {
+    E("clearSel(); closePanel(); tabs.length = 1; tabs[0].nodes.length=0; tabs[0].edges.length=0; activeTabId = tabs[0].id;");
+    E("tabs[0].nodes.push(" +
+      "{id:'p1', type:'char', types:['char','group'], name:'레온', desc:'북방의 기사'," +
+      " props:[{k:'나이',v:'32'},{k:'생사',v:''}], x:1000, y:1000}," +
+      "{id:'p2', type:'item', name:'검', desc:'', x:1600, y:1000});");
+    E("setEditMode(true); commit(); renderAll();");
+    await wait(30);
+
+    /* 노드를 클릭하면 펼침 + 패널이 함께 */
+    E("_justDragged = false");
+    doc.querySelector('[data-id="p1"]').dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(60);
+    T("16-1 클릭하면 카드가 펼쳐짐", E("nodeById(curTab(),'p1')._exp") === true);
+    T("16-2 클릭하면 상세 패널도 열림", E("rpCur") === "node" && !doc.getElementById("rp").hidden);
+    T("16-3 패널 제목", doc.getElementById("rpTitle").textContent.includes("노드"));
+
+    /* 위 칸: 이름·타입·속성·설명 */
+    T("16-4 이름 표시", doc.querySelector("#npHead .np-name").textContent === "레온");
+    T("16-5 겸하는 타입 모두 표시", doc.querySelectorAll("#npHead .nt").length === 2);
+    T("16-6 속성 표 — 빈 값도 항목은 보임", doc.querySelectorAll("#npProps .pk").length === 2 &&
+      doc.querySelectorAll("#npProps .pv.empty").length === 1);
+    T("16-7 설명 표시", doc.getElementById("npDesc").textContent === "북방의 기사");
+    T("16-8 이미지 없으면 이미지 칸은 숨김", doc.getElementById("npImgs").hidden === true);
+
+    /* 다른 노드를 클릭하면 내용이 바뀐다 */
+    E("_justDragged = false");
+    doc.querySelector('[data-id="p2"]').dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(60);
+    T("16-9 다른 노드 클릭 시 패널 갱신", doc.querySelector("#npHead .np-name").textContent === "검");
+
+    /* 여러 개 선택하면 안내 */
+    E("sel = {nodeIds:['p1','p2'], edgeId:null}; renderNodePanel();");
+    await wait(20);
+    T("16-10 복수 선택이면 안내 문구", !doc.getElementById("npEmpty").hidden &&
+      doc.getElementById("npEmpty").textContent.includes("하나만"));
+
+    /* 아래 칸: 링크 */
+    E("sel = {nodeIds:['p1'], edgeId:null}; renderNodePanel();");
+    await wait(20);
+    T("16-11 링크가 없으면 안내", doc.querySelector("#npLinks .hint") !== null);
+    E("nodeById(curTab(),'p1').links = [{url:'https://example.com', label:'설정 문서'}]; commit(); renderNodePanel();");
+    await wait(20);
+    T("16-12 링크 표시", doc.querySelector("#npLinks a").textContent === "설정 문서" &&
+      doc.querySelector("#npLinks a").getAttribute("href") === "https://example.com");
+    T("16-13 새 창으로 안전하게 열림", doc.querySelector("#npLinks a").getAttribute("rel").includes("noopener"));
+    doc.querySelector("#npLinks .ty-btn").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(30);
+    T("16-14 × 로 링크 삭제", E("nodeById(curTab(),'p1').links.length") === 0);
+
+    /* 아래 칸: 메모 자동 저장 */
+    const memo = doc.getElementById("npMemo");
+    memo.value = "이 인물은 2막에서 배신한다";
+    memo.dispatchEvent(new w.Event("input", {bubbles:true}));
+    await wait(30);
+    T("16-15 메모가 노드에 반영", E("nodeById(curTab(),'p1').memo") === "이 인물은 2막에서 배신한다");
+    await wait(700);
+    T("16-16 메모는 잠시 뒤 자동 커밋", E("(undoMap[activeTabId]||[]).length") > 0);
+
+    /* 저장·동기화 형식 */
+    E("saveLocal()");
+    const saved = JSON.parse(w.localStorage.getItem("wm_tabs")).tabs[0].nodes.find(n => n.id === "p1");
+    T("16-17 저장에 memo·links·imgs 포함",
+      saved.memo === "이 인물은 2막에서 배신한다" && Array.isArray(saved.links) && Array.isArray(saved.imgs));
+    const fb = E("JSON.stringify(normFB('nodes', nodeById(curTab(),'p1')))");
+    T("16-18 Firebase 정규화에도 포함", fb.includes('"memo"') && fb.includes('"links"') && fb.includes('"imgs"'));
+
+    /* 이미지가 있으면 맨 위에 */
+    E("nodeById(curTab(),'p1').imgs = [{id:'im_x', w:1600, h:1000, cap:'초상'}]; renderNodePanel();");
+    await wait(20);
+    T("16-19 이미지가 있으면 맨 위 칸이 열림", doc.getElementById("npImgs").hidden === false &&
+      doc.querySelectorAll("#npImgs img").length === 1);
+    T("16-20 이미지가 패널 최상단", doc.getElementById("npBody").firstElementChild.id === "npImgs");
+    E("nodeById(curTab(),'p1').imgs = []; closePanel();");
+  }
+
   done();
 })();

@@ -49,6 +49,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§5-14 노드 타입 관리` | `openTypeManager`(탭별 타입 추가·이름변경·순서·삭제). 삭제된 타입의 노드는 최하위 타입으로 이동 |
 | `§5-16 노드 가져오기` | `openImportModal`/`runImport`/`applyImportResult`. `parseDrawio`(mxCell 파싱+압축 해제), `layoutImported`+`freeOrigin`(추가분만 배치 — 기존 좌표 불변) |
 | `§1 노드 스키마` | `nodeTypes(n)`(겸하는 타입 목록) · `nodeTypeLabels` · `typeFields`(타입별 기본 속성) · `propGet`. ⚠ `node.type` 은 `sanitizeTab` 이 항상 `types[0]` 과 동기화하므로 둘을 따로 쓰면 안 된다 |
+| `§5-16 노드 상세 패널` | `renderNodePanel`/`panelNode`/`openNodePanel`. 위 칸=이미지·이름·타입·속성·설명, 아래 칸=링크·메모(노드별). 노드 클릭은 펼침과 패널을 **함께** 연다 |
 | `§5-14 노드 검색` | `runSearch`/`stepSearch`/`centerOnNode`. `searchHits`+`searchIdx`+`searchQuery`(재검색·순회 구분). 강조는 `renderNodes` 가 `.found`/`.cur` 클래스로 |
 | `§5-15 선택 영역 복사` | `copySelection`/`pasteClip`(내부 버퍼 `clipBuf`), `copySelectionImage`(캔버스에 직접 그려 투명 PNG). 연결선은 화면 SVG 의 `d`(M x y Q …)를 그대로 재현한다 |
 | `§5-4 노드 자동 정렬` | `computeRadialLayout`, `tweenTo` |
