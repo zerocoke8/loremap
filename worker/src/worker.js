@@ -6,6 +6,10 @@
  *  - POST /api/fbtoken : (토큰 필요) Firebase 커스텀 토큰 재발급 — Firebase 세션은 1시간이라 갱신이 필요하다
  *  - POST /api/claude  : (토큰 필요) Anthropic Messages API 대리 호출
  *  - POST /api/gemini  : (토큰 필요) Google Gemini generateContent 대리 호출
+ *  - GET  /api/img/{id}: 노드 이미지 읽기 (공개 — 방문자도 봐야 하므로 토큰 게이트 앞에 둔다)
+ *  - POST /api/img     : (토큰 필요) 노드 이미지 업로드 → {id}
+ *  - GET  /api/img     : (토큰 필요) 저장된 이미지 id 목록 — 고아 정리용
+ *  - DELETE /api/img/{id} : (토큰 필요) 이미지 삭제
  *  - GET  /api/health  : 동작 확인
  *
  * 비밀 변수 (Settings → Variables and Secrets 에서 Secret 으로 등록)
@@ -20,6 +24,10 @@
  *                       설정하면 마스터 코드 검증에 성공한 사람에게만 Firebase 쓰기 권한을 준다.
  *                       미설정이면 fbToken 을 생략하고 지금까지처럼 동작한다(앱이 깨지지 않는다).
  *
+ * R2 바인딩
+ *  - IMG                노드 이미지 버킷. 대시보드 Settings → Bindings → R2 bucket,
+ *                       Variable name 을 IMG 로 지정. 없으면 이미지 기능만 503 으로 안내한다.
+ *
  * 일반 변수 (Text)
  *  - ALLOWED_ORIGINS    허용할 사이트 주소(도메인까지만, 끝에 / 없이). 쉼표로 여러 개. 예) https://myname.github.io
  *                       로컬 파일(file://)로 테스트하려면 null 을 추가. 전부 허용은 *
@@ -30,6 +38,8 @@ const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;   // 12시간
 const MAX_TOKENS_CAP = 8192;
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
+const IMG_MAX_BYTES = 8 * 1024 * 1024;      // 클라이언트가 리사이즈해 보내므로 보통 300KB 안팎
+const IMG_TYPES = {'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp', 'image/gif':'gif'};
 
 export default {
   async fetch(request, env){
@@ -49,12 +59,21 @@ export default {
 
     try{
       if(url.pathname === '/api/health') return json({ok:true, time:Date.now()}, 200, cors);
+      /* ⚠ 이미지 읽기는 토큰 게이트 앞이다 — 보기 전용 방문자도 그림을 봐야 한다 */
+      if(url.pathname.startsWith('/api/img/') && request.method === 'GET'){
+        return handleImgGet(url, env, cors);
+      }
       if(url.pathname === '/api/auth' && request.method === 'POST') return handleAuth(request, env, cors);
 
       const ok = await verifyToken(bearer(request), env);
       if(!ok) return json({error:{message:'unauthorized'}}, 401, cors);
 
       if(url.pathname === '/api/fbtoken' && request.method === 'POST') return handleFbToken(env, cors);
+      if(url.pathname === '/api/img' && request.method === 'POST') return handleImgPut(request, env, cors);
+      if(url.pathname === '/api/img' && request.method === 'GET') return handleImgList(url, env, cors);
+      if(url.pathname.startsWith('/api/img/') && request.method === 'DELETE'){
+        return handleImgDel(url, env, cors);
+      }
       if(url.pathname === '/api/claude' && request.method === 'POST') return handleClaude(request, env, cors);
       if(url.pathname === '/api/gemini' && request.method === 'POST') return handleGemini(request, env, cors);
       return json({error:{message:'not found'}}, 404, cors);
@@ -206,6 +225,62 @@ async function safeEqual(a, b){
   let diff = 0;
   for(let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
   return diff === 0;
+}
+
+/* ---------------- 노드 이미지 (R2) ----------------
+   키는 서버가 만든다. 클라이언트가 준 문자열을 그대로 쓰면 경로를 파고들 수 있다. */
+function imgKey(id){
+  return /^[A-Za-z0-9_-]{1,64}\.(jpg|png|webp|gif)$/.test(id) ? id : null;
+}
+async function handleImgGet(url, env, cors){
+  if(!env.IMG) return json({error:{message:'이미지 저장소(R2 바인딩 IMG)가 설정되지 않았습니다'}}, 503, cors);
+  const key = imgKey(decodeURIComponent(url.pathname.slice('/api/img/'.length)));
+  if(!key) return json({error:{message:'bad image id'}}, 400, cors);
+  const obj = await env.IMG.get(key);
+  if(!obj) return json({error:{message:'not found'}}, 404, cors);
+  return new Response(obj.body, {
+    status: 200,
+    headers: {
+      ...cors,
+      'Content-Type': obj.httpMetadata?.contentType || 'application/octet-stream',
+      /* 키가 내용에 종속(랜덤 발급 후 불변)이라 영구 캐시해도 안전하다 */
+      'Cache-Control': 'public, max-age=31536000, immutable'
+    }
+  });
+}
+async function handleImgPut(request, env, cors){
+  if(!env.IMG) return json({error:{message:'이미지 저장소(R2 바인딩 IMG)가 설정되지 않았습니다'}}, 503, cors);
+  const ct = (request.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const ext = IMG_TYPES[ct];
+  if(!ext) return json({error:{message:'지원하지 않는 이미지 형식입니다 (jpeg·png·webp·gif)'}}, 400, cors);
+  const buf = await request.arrayBuffer();
+  if(!buf.byteLength) return json({error:{message:'빈 요청입니다'}}, 400, cors);
+  if(buf.byteLength > IMG_MAX_BYTES){
+    return json({error:{message:'이미지가 너무 큽니다 (최대 8MB)'}}, 413, cors);
+  }
+  const rnd = crypto.getRandomValues(new Uint8Array(12));
+  const id = 'im' + Array.from(rnd, b => b.toString(16).padStart(2, '0')).join('') + '.' + ext;
+  await env.IMG.put(id, buf, {httpMetadata:{contentType: ct}});
+  return json({id, bytes: buf.byteLength}, 200, cors);
+}
+/* 저장소에 실제로 있는 id 목록 — 어느 노드도 참조하지 않는 것을 찾아내는 데 쓴다.
+   R2 list 는 한 번에 1000개까지라 커서로 이어 받는다. */
+async function handleImgList(url, env, cors){
+  if(!env.IMG) return json({error:{message:'이미지 저장소(R2 바인딩 IMG)가 설정되지 않았습니다'}}, 503, cors);
+  const cursor = url.searchParams.get('cursor') || undefined;
+  const res = await env.IMG.list({limit:1000, cursor});
+  return json({
+    ids: (res.objects || []).map(o => o.key),
+    bytes: (res.objects || []).reduce((a, o) => a + (o.size || 0), 0),
+    cursor: res.truncated ? res.cursor : null
+  }, 200, cors);
+}
+async function handleImgDel(url, env, cors){
+  if(!env.IMG) return json({error:{message:'이미지 저장소(R2 바인딩 IMG)가 설정되지 않았습니다'}}, 503, cors);
+  const key = imgKey(decodeURIComponent(url.pathname.slice('/api/img/'.length)));
+  if(!key) return json({error:{message:'bad image id'}}, 400, cors);
+  await env.IMG.delete(key);
+  return json({ok:true}, 200, cors);
 }
 
 /* ---------------- Anthropic 프록시 ---------------- */

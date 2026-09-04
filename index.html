@@ -353,7 +353,13 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .btnrow{display:flex;gap:7px;flex-wrap:wrap}
 .rp-empty{color:var(--text3);font-size:13px;line-height:1.7;padding:18px 2px}
 .np-imgs{display:flex;flex-direction:column;gap:8px;margin-bottom:4px}
-.np-imgs img{width:100%;border-radius:10px;border:1px solid var(--border2);display:block}
+.np-img{position:relative}
+.np-img img{width:100%;border-radius:10px;border:1px solid var(--border2);display:block}
+.np-img .np-cap{width:100%;margin-top:4px;font-size:12px}
+.np-img .np-acts{position:absolute;top:6px;right:6px;display:flex;gap:4px}
+.np-img .np-acts button{width:26px;height:26px;border:none;border-radius:7px;
+  background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:1}
+.np-img.up{opacity:.5}
 .np-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:2px}
 .np-name{font-size:17px;font-weight:600;line-height:1.35;word-break:keep-all;flex:1 1 100%}
 .np-table{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:10px 0 2px;font-size:13px}
@@ -591,11 +597,14 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
       <div class="rp-sec">참고 그림체 이미지 (최대 3장 · 이 브라우저에만 저장)</div>
       <div class="refgrid" id="refImgs"></div>
       <input type="file" id="refFile" accept="image/*" hidden>
+      <input type="file" id="npImgFile" accept="image/*" multiple hidden>
     </div>
     <div class="rp-b" id="rpNode" hidden>
       <div id="npEmpty" class="rp-empty">노드를 클릭하면 여기에 자세한 내용이 나옵니다.</div>
       <div id="npBody" hidden>
         <div id="npImgs" class="np-imgs" hidden></div>
+        <div class="btnrow eo"><button class="btn" id="npImgAdd">🖼 이미지 추가</button></div>
+        <div class="hint" id="npImgHint" hidden></div>
         <div class="rp-sec">노드</div>
         <div id="npHead"></div>
         <div id="npProps" class="np-table"></div>
@@ -1965,7 +1974,8 @@ function renderNodes(){
     el.style.setProperty('--c', tc.border);
     el.style.setProperty('--c-bg', tc.bg);
     el.innerHTML =
-      `<div class="nh">${nodeTypeLabels(tab, n).map(l => `<span class="nt">${escHtml(l)}</span>`).join('')}</div>` +
+      `<div class="nh">${nodeTypeLabels(tab, n).map(l => `<span class="nt">${escHtml(l)}</span>`).join('')}
+        ${(n.imgs && n.imgs.length) ? `<span class="nt">🖼 ${n.imgs.length}</span>` : ''}</div>` +
       `<div class="nn">${escHtml(n.name || '(이름 없음)')}</div>` +
       (n.props && n.props.some(p => p.v)
         ? `<div class="np">${n.props.filter(p => p.v).slice(0,4).map(p => `<span class="npi"><b>${escHtml(p.k)}</b>${escHtml(p.v)}</span>`).join('')}</div>`
@@ -3645,7 +3655,15 @@ function renderNodePanel(){
   const imgs = Array.isArray(n.imgs) ? n.imgs : [];
   const ie = $('#npImgs');
   ie.hidden = !imgs.length;
-  ie.innerHTML = imgs.map(im => `<img src="${escHtml(imgUrl(im.id))}" alt="${escHtml(im.cap || n.name || '')}" loading="lazy">`).join('');
+  ie.innerHTML = imgs.map((im, i) =>
+    `<div class="np-img">` +
+      `<img src="${escHtml(imgUrl(im.id))}" alt="${escHtml(im.cap || n.name || '')}" loading="lazy">` +
+      `<div class="np-acts eo">` +
+        `<button data-a="up" data-i="${i}" title="위로" ${i === 0 ? 'disabled' : ''}>↑</button>` +
+        `<button data-a="del" data-i="${i}" title="삭제">×</button>` +
+      `</div>` +
+      `<input class="np-cap eo" data-i="${i}" maxlength="120" placeholder="설명 (선택)" value="${escHtml(im.cap || '')}">` +
+    `</div>`).join('');
 
   $('#npHead').innerHTML =
     `<div class="np-head"><div class="np-name">${escHtml(n.name || '(이름 없음)')}</div>` +
@@ -3668,8 +3686,141 @@ function renderNodePanel(){
   const memo = $('#npMemo');
   if(document.activeElement !== memo) memo.value = n.memo || '';
 }
-/* 이미지 주소 — §5-17 에서 R2 로 바뀐다. 지금은 자리만 잡아둔다. */
+/* ---------------- §5-17 노드 이미지 (R2) ----------------
+   바이트는 Worker 를 거쳐 R2 에 두고, 노드에는 {id,w,h,cap} 만 남긴다.
+   그래야 Firebase 동기화가 가벼워지고 다른 기기에서도 같은 그림이 보인다.
+   localStorage 에 base64 로 넣으면 5~10MB 에서 터진다 — 그래서 여기로 옮겼다. */
 function imgUrl(id){ return API_BASE ? (API_BASE + '/api/img/' + encodeURIComponent(id)) : ''; }
+
+const IMG_MAX_EDGE = 1600;      // 긴 변 기준 축소 — 원본을 그대로 올리면 용량이 금방 찬다
+const IMG_QUALITY  = 0.82;
+
+/* 파일 → 긴 변 1600px JPEG Blob (+ 실제 크기). 투명이 필요한 PNG 도 배경을 깔아 JPEG 로 통일한다. */
+function shrinkImage(file){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const sc = Math.min(1, IMG_MAX_EDGE / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * sc));
+      const h = Math.max(1, Math.round(img.height * sc));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      cv.toBlob(b => b ? resolve({blob:b, w, h}) : reject(new Error('이미지를 변환하지 못했습니다')),
+        'image/jpeg', IMG_QUALITY);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지를 읽지 못했습니다')); };
+    img.src = url;
+  });
+}
+
+async function uploadImage(file){
+  if(!API_BASE) throw new Error('서버 주소(API_BASE)가 설정되지 않았습니다');
+  if(!getToken()) throw new Error('🔒 버튼에서 잠금을 해제한 뒤 이미지를 올릴 수 있습니다');
+  const {blob, w, h} = await shrinkImage(file);
+  const r = await fetch(API_BASE + '/api/img', {
+    method:'POST',
+    headers:{'content-type':'image/jpeg', 'authorization':'Bearer ' + getToken()},
+    body: blob
+  });
+  const d = await r.json().catch(() => null);
+  if(r.status === 401){ clearToken(); fbSignOut(); if(editMode) setEditMode(false);
+    throw new Error('세션이 만료되었습니다. 🔒 버튼으로 다시 잠금 해제해주세요'); }
+  if(!r.ok || !d?.id) throw new Error(d?.error?.message || ('이미지 업로드 실패 ' + r.status));
+  return {id:d.id, w, h, cap:''};
+}
+
+/* 패널에서 고른 파일들을 차례로 올려 현재 노드에 붙인다 */
+async function addImagesToNode(files){
+  if(!reqEdit()) return;
+  const n = panelNode(); if(!n) return;
+  const list = Array.from(files || []).filter(f => /^image\//.test(f.type));
+  if(!list.length) return;
+  const hint = $('#npImgHint');
+  let done = 0, failed = 0;
+  for(const f of list){
+    hint.hidden = false;
+    hint.textContent = `이미지 올리는 중… (${done + failed + 1}/${list.length})`;
+    try{
+      const im = await uploadImage(f);
+      if(!nodeById(curTab(), n.id)) return;          // 올리는 사이 노드가 사라졌다
+      n.imgs = [...(n.imgs || []), im];
+      done++;
+      commit(); renderNodePanel(); renderAll();
+    }catch(err){
+      failed++;
+      console.error('이미지 업로드 실패', err);
+      toast(String(err && err.message || err), true);
+    }
+  }
+  hint.hidden = true;
+  if(done) toast(`이미지 ${done}장을 추가했습니다` + (failed ? ` (${failed}장 실패)` : ''));
+}
+
+async function removeNodeImage(i){
+  if(!reqEdit()) return;
+  const n = panelNode(); if(!n) return;
+  const im = (n.imgs || [])[i]; if(!im) return;
+  n.imgs = n.imgs.filter((_, k) => k !== i);
+  commit(); renderNodePanel(); renderAll();
+  /* 저장소에서도 지운다 — 실패해도 노드에서는 이미 빠졌으므로 조용히 넘어간다 */
+  try{
+    await fetch(API_BASE + '/api/img/' + encodeURIComponent(im.id),
+      {method:'DELETE', headers:{'authorization':'Bearer ' + getToken()}});
+  }catch(err){ console.warn('이미지 삭제 실패(참조는 이미 제거됨)', err); }
+}
+
+/* 어느 노드도 참조하지 않는 이미지를 저장소에서 지운다.
+   ⚠ 모든 탭을 훑어 참조를 모은다 — 탭 목록이 불완전한 상태(동기화 전)에서 돌리면
+      살아 있는 이미지를 지울 수 있으므로, 개수를 보여주고 확인을 받는다. */
+async function cleanupImages(){
+  if(!reqEdit()) return;
+  if(!API_BASE){ toast('서버 주소가 설정되지 않았습니다', true); return; }
+  try{
+    const used = new Set();
+    tabs.forEach(t => t.nodes.forEach(n => (n.imgs || []).forEach(im => used.add(im.id))));
+    let cursor = null, all = [], bytes = 0;
+    do{
+      const r = await fetch(API_BASE + '/api/img' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''),
+        {headers:{'authorization':'Bearer ' + getToken()}});
+      const d = await r.json().catch(() => null);
+      if(!r.ok) throw new Error(d?.error?.message || ('목록을 받지 못했습니다 ' + r.status));
+      all = all.concat(d.ids || []);
+      bytes += d.bytes || 0;
+      cursor = d.cursor;
+    }while(cursor);
+    const dead = all.filter(id => !used.has(id));
+    if(!dead.length){
+      toast(`정리할 이미지가 없습니다 (사용 중 ${used.size}장 · 총 ${(bytes/1048576).toFixed(1)}MB)`);
+      return;
+    }
+    confirmModal({
+      title:'안 쓰는 이미지 정리', danger:true, ok:`${dead.length}장 삭제`,
+      html:`어느 노드도 쓰지 않는 이미지 <b>${dead.length}장</b>을 저장소에서 지웁니다.<br>` +
+           `<span style="color:var(--text3)">사용 중 ${used.size}장은 그대로 둡니다. 되돌릴 수 없습니다.<br>` +
+           `다른 기기에서 만든 탭이 아직 동기화되지 않았다면 그 탭의 이미지도 "안 쓰는 것"으로 보일 수 있습니다.</span>`,
+      onOk: async () => {
+        let ok = 0;
+        for(const id of dead){
+          try{
+            const r = await fetch(API_BASE + '/api/img/' + encodeURIComponent(id),
+              {method:'DELETE', headers:{'authorization':'Bearer ' + getToken()}});
+            if(r.ok) ok++;
+          }catch(_){}
+        }
+        toast(`이미지 ${ok}장을 정리했습니다`);
+      }
+    });
+  }catch(err){
+    console.error('이미지 정리 실패', err);
+    toast(String(err && err.message || err), true);
+  }
+}
 
 /* ---------------- §5-5 세계관 패널 ---------------- */
 function renderWorldPanel(){
@@ -4647,6 +4798,7 @@ function openSettings(){
         <div class="row-btns">
           <button class="btn" id="stExport">💾 파일로 저장</button>
           <button class="btn" id="stImport">📂 파일에서 불러오기</button>
+          <button class="btn eo" id="stImgClean">🧹 안 쓰는 이미지 정리</button>
         </div>
         <div class="hint">저장은 <b>worldmind-export.json</b> 파일을 내려받습니다. 불러오기는 <b>모든 탭을 교체</b>하므로 편집 모드에서만 쓸 수 있습니다.</div>
       </div>
@@ -4669,6 +4821,7 @@ function openSettings(){
     themeCommitted = true;
   };
   ov.querySelector('#stExport').onclick = exportJson;
+  ov.querySelector('#stImgClean').onclick = cleanupImages;
   ov.querySelector('#stImport').onclick = () => {
     if(!editMode){ toast('불러오기는 모든 데이터를 덮어쓰므로 🔒 버튼으로 편집 모드에 들어간 뒤 사용할 수 있습니다', true); return; }
     $('#fileImport').click();
@@ -4781,6 +4934,38 @@ function bindStaticUI(){
   });
   $('#rpClose').onclick = closePanel;
   $('#npEdit').onclick = () => { const n = panelNode(); if(n) openNodeModal(n); };
+  $('#npImgAdd').onclick = () => { if(reqEdit()) $('#npImgFile').click(); };
+  $('#npImgFile').addEventListener('change', e => { addImagesToNode(e.target.files); e.target.value = ''; });
+  $('#npImgs').addEventListener('click', e => {
+    const b = e.target.closest('button'); if(!b) return;
+    const i = +b.dataset.i;
+    if(b.dataset.a === 'del'){ removeNodeImage(i); return; }
+    if(b.dataset.a === 'up'){
+      if(!reqEdit()) return;
+      const n = panelNode(); if(!n || i < 1) return;
+      const a = n.imgs.slice();
+      [a[i-1], a[i]] = [a[i], a[i-1]];
+      n.imgs = a;
+      commit(); renderNodePanel();
+    }
+  });
+  $('#npImgs').addEventListener('change', e => {
+    const inp = e.target.closest('.np-cap'); if(!inp) return;
+    if(!reqEdit()) return;
+    const n = panelNode(); if(!n) return;
+    const i = +inp.dataset.i;
+    if(n.imgs[i]){ n.imgs[i].cap = inp.value.slice(0, 120); commit(); }
+  });
+  /* 패널에 이미지를 끌어다 놓거나 붙여넣어도 추가된다 */
+  ['dragover','dragenter'].forEach(ev => $('#rpNode').addEventListener(ev, e => { e.preventDefault(); }));
+  $('#rpNode').addEventListener('drop', e => {
+    e.preventDefault();
+    if(e.dataTransfer?.files?.length) addImagesToNode(e.dataTransfer.files);
+  });
+  $('#rpNode').addEventListener('paste', e => {
+    const fs2 = Array.from(e.clipboardData?.files || []);
+    if(fs2.length){ e.preventDefault(); addImagesToNode(fs2); }
+  });
   $('#npLinkAdd').onclick = () => {
     if(!reqEdit()) return;
     const n = panelNode(); if(!n) return;

@@ -876,5 +876,50 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     E("nodeById(curTab(),'p1').imgs = []; closePanel();");
   }
 
+  /* ---- 17. 노드 이미지 (패널) ---- */
+  {
+    E("clearSel(); closePanel(); tabs.length=1; tabs[0].nodes.length=0; tabs[0].edges.length=0; activeTabId=tabs[0].id;");
+    E("tabs[0].nodes.push({id:'q1', type:'char', name:'레온', desc:'', x:1000, y:1000});");
+    E("setEditMode(true); commit(); renderAll(); sel={nodeIds:['q1'], edgeId:null}; openNodePanel();");
+    await wait(40);
+    T("17-1 이미지가 없으면 칸이 숨겨짐", doc.getElementById("npImgs").hidden === true);
+
+    E("nodeById(curTab(),'q1').imgs = [" +
+      "{id:'im_aaa.jpg', w:1600, h:1000, cap:'초상'}," +
+      "{id:'im_bbb.jpg', w:800, h:600, cap:''}]; renderNodePanel(); renderAll();");
+    await wait(30);
+    T("17-2 이미지 두 장 표시", doc.querySelectorAll("#npImgs .np-img").length === 2);
+    T("17-3 주소가 Worker 경유", doc.querySelector("#npImgs img").getAttribute("src").includes("/api/img/im_aaa.jpg"));
+    T("17-4 설명 입력칸에 기존 값", doc.querySelector("#npImgs .np-cap").value === "초상");
+    T("17-5 첫 장은 위로 이동 불가", doc.querySelector('#npImgs [data-a="up"]').disabled === true);
+    T("17-6 카드에 이미지 개수 배지", [...doc.querySelectorAll('[data-id="q1"] .nt')].some(e => e.textContent.includes("2")));
+
+    /* 순서 바꾸기 */
+    doc.querySelectorAll('#npImgs [data-a="up"]')[1].dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(30);
+    T("17-7 ↑ 로 순서 변경", E("nodeById(curTab(),'q1').imgs[0].id") === "im_bbb.jpg");
+
+    /* 설명 편집 */
+    const cap = doc.querySelectorAll("#npImgs .np-cap")[0];
+    cap.value = "전신";
+    cap.dispatchEvent(new w.Event("change", {bubbles:true}));
+    await wait(30);
+    T("17-8 설명 저장", E("nodeById(curTab(),'q1').imgs[0].cap") === "전신");
+
+    /* 삭제 — 참조가 먼저 빠진다 */
+    doc.querySelectorAll('#npImgs [data-a="del"]')[0].dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(40);
+    T("17-9 × 로 삭제", E("nodeById(curTab(),'q1').imgs.length") === 1);
+
+    /* 저장 형식 — base64 가 아니라 참조만 */
+    E("saveLocal()");
+    const raw = w.localStorage.getItem("wm_tabs");
+    T("17-10 저장에는 참조만(base64 없음)", !raw.includes("data:image") && raw.includes("im_aaa.jpg"));
+    const saved = JSON.parse(raw).tabs[0].nodes[0];
+    T("17-11 이미지 메타 형식", saved.imgs.length === 1 &&
+      Object.keys(saved.imgs[0]).sort().join(",") === "cap,h,id,w");
+    E("closePanel();");
+  }
+
   done();
 })();

@@ -149,5 +149,67 @@ T('다른 경로는 Origin 없어도 그대로 통과', r.status === 200);
 r = await call('/api/auth', {body:{code:'my-secret-code-123'}, origin:''}, {...env, ALLOWED_ORIGINS:'*'});
 T('와일드카드 허용이면 Origin 없어도 통과(개발용)', r.status === 200);
 
+/* ---- 노드 이미지 (R2) ---- */
+const bucket = new Map();
+const imgEnv = {...env, IMG: {
+  put: async (k, body, opts) => { bucket.set(k, {body, ct: opts?.httpMetadata?.contentType}); },
+  get: async k => bucket.has(k)
+    ? {body: bucket.get(k).body, httpMetadata:{contentType: bucket.get(k).ct}} : null,
+  delete: async k => { bucket.delete(k); }
+}};
+const png = new Uint8Array([137,80,78,71,13,10,26,10,1,2,3,4]);
+const imgCall = (path, opts = {}, e = imgEnv) => worker.fetch(new Request('https://worker.test' + path, {
+  method: opts.method || 'POST',
+  headers: {'Origin': opts.origin ?? ORIGIN, ...(opts.headers || {})},
+  body: opts.body
+}), e);
+
+r = await imgCall('/api/img', {headers:{'content-type':'image/png'}, body:png});
+T('이미지 업로드는 토큰 필요', r.status === 401);
+
+const IH = {authorization:'Bearer ' + auth.token};
+r = await imgCall('/api/img', {headers:{...IH, 'content-type':'image/png'}, body:png});
+const up = await r.json();
+T('업로드 성공 → id 발급', r.status === 200 && /^im[0-9a-f]{24}\.png$/.test(up.id), up);
+T('R2 에 실제로 저장', bucket.has(up.id) && bucket.get(up.id).ct === 'image/png');
+
+r = await imgCall('/api/img', {headers:{...IH, 'content-type':'application/pdf'}, body:png});
+T('허용하지 않는 형식은 400', r.status === 400);
+r = await imgCall('/api/img', {headers:{...IH, 'content-type':'image/png'}, body:new Uint8Array(9*1024*1024)});
+T('8MB 초과는 413', r.status === 413);
+r = await imgCall('/api/img', {headers:{...IH, 'content-type':'image/png'}, body:new Uint8Array(0)});
+T('빈 요청은 400', r.status === 400);
+
+/* 읽기는 공개 — 보기 전용 방문자도 그림을 봐야 한다 */
+r = await imgCall('/api/img/' + up.id, {method:'GET'});
+T('이미지 읽기는 토큰 없이 가능', r.status === 200);
+T('원래 형식으로 응답', r.headers.get('Content-Type') === 'image/png');
+T('영구 캐시 헤더', (r.headers.get('Cache-Control')||'').includes('immutable'));
+r = await imgCall('/api/img/im000000000000000000000000.png', {method:'GET'});
+T('없는 이미지는 404', r.status === 404);
+
+/* 키 검증 — 경로를 파고들 수 없어야 한다 */
+r = await imgCall('/api/img/' + encodeURIComponent('../secret.txt'), {method:'GET'});
+T('경로 탈출 시도는 400', r.status === 400);
+r = await imgCall('/api/img/notanid', {method:'GET'});
+T('형식에 맞지 않는 id 는 400', r.status === 400);
+
+bucket.set('imdead000000000000000000.jpg', {body:png, ct:'image/jpeg'});
+imgEnv.IMG.list = async () => ({objects:[...bucket.keys()].map(k => ({key:k, size:12})), truncated:false, cursor:null});
+r = await imgCall('/api/img', {method:'GET'});
+T('목록도 토큰 필요', r.status === 401);
+r = await imgCall('/api/img', {method:'GET', headers:IH});
+const ls = await r.json();
+T('저장된 id 목록 반환', r.status === 200 && ls.ids.includes(up.id) && ls.ids.includes('imdead000000000000000000.jpg'), ls);
+T('용량 합계도 함께', ls.bytes > 0 && ls.cursor === null);
+
+r = await imgCall('/api/img/' + up.id, {method:'DELETE'});
+T('삭제도 토큰 필요', r.status === 401);
+r = await imgCall('/api/img/' + up.id, {method:'DELETE', headers:IH});
+T('삭제 성공', r.status === 200 && !bucket.has(up.id));
+
+r = await imgCall('/api/img', {headers:{...IH, 'content-type':'image/png'}, body:png}, env);
+T('R2 바인딩이 없으면 503 안내', r.status === 503);
+
 console.log('\n결과: ' + pass + ' 통과 / ' + fail + ' 실패');
 process.exit(fail ? 1 : 0);
