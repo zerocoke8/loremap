@@ -9,6 +9,12 @@ name = "worldmind-api"
 main = "src/worker.js"
 compatibility_date = "2026-08-01"
 
+# 노드 이미지 버킷 — 대시보드에서 만든 바인딩과 이름·버킷이 같아야 합니다.
+# 여기 없으면 CLI 배포가 대시보드 바인딩을 지워 이미지 기능이 503 이 됩니다.
+[[r2_buckets]]
+binding = "IMG"
+bucket_name = "worldmind-img"
+
 [vars]
 # 허용할 사이트 주소 (쉼표로 여러 개).
 #   · 로컬 개발 서버도 쓰려면: "https://zerocoke8.github.io,http://localhost:3000"
