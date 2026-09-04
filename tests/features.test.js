@@ -921,5 +921,66 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     E("closePanel();");
   }
 
+  /* ---- 18. UI 재배치 + 겹침 우선순위 ---- */
+  {
+    E("clearSel(); closePanel(); tabs.length=1; tabs[0].nodes.length=0; tabs[0].edges.length=0; activeTabId=tabs[0].id;");
+    E("tabs[0].title='첫 세계관'; tabs[0].nodes.push(" +
+      "{id:'u1', type:'char', name:'가', desc:'설명', x:1000, y:1000}," +
+      "{id:'u2', type:'item', name:'나', desc:'설명', x:1040, y:1030});");
+    E("setEditMode(true); commit(); renderTabs(); renderAll();");
+    await wait(30);
+
+    /* 검색 버튼이 캔버스 안에 있다 */
+    const sb = doc.getElementById("btnSearch");
+    T("18-1 검색 버튼이 캔버스 안", sb && sb.closest("#cwrap") !== null);
+    T("18-2 툴바에는 검색 버튼이 없음", doc.querySelector("#topbar #btnSearch") === null);
+    sb.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(30);
+    T("18-3 누르면 검색창이 열리고 버튼은 숨음",
+      !doc.getElementById("searchBar").hidden && doc.getElementById("btnSearch").hidden === true);
+    E("closeSearch()");
+    await wait(20);
+    T("18-4 닫으면 버튼이 돌아옴", doc.getElementById("btnSearch").hidden === false);
+
+    /* 탭에는 이름만, 조작 버튼은 오른쪽에 모여 있다 */
+    T("18-5 탭에 개별 복제·삭제 버튼 없음", doc.querySelectorAll("#tabs .ta").length === 0);
+    T("18-6 탭에는 이름만", doc.querySelector("#tabs .tab .tt").textContent === "첫 세계관");
+    const acts = [...doc.querySelectorAll(".tabacts button")].map(b => b.id);
+    T("18-7 오른쪽에 추가·복제·삭제 순", acts.join(",") === "tabAdd,tabDup,tabDel", acts);
+
+    /* 복제·삭제는 현재 탭을 대상으로 */
+    doc.getElementById("tabDup").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(80);
+    T("18-8 복제 버튼이 현재 탭을 복제", E("tabs.length") === 2 && E("tabs[1].title") === "복사_첫 세계관");
+    doc.getElementById("tabDel").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(40);
+    T("18-9 삭제 버튼이 확인 모달을 띄움", !!doc.querySelector(".ov"));
+    doc.querySelector(".ov [data-a=k], .ov .btn.dngr, .ov [data-a=d]")?.click();
+    await wait(60);
+    T("18-10 확인하면 삭제", E("tabs.length") === 1);
+
+    /* 🔒 버튼이 툴바 맨 오른쪽 */
+    const tb = [...doc.querySelectorAll("#topbar .tb")];
+    T("18-11 🔒 버튼이 툴바 맨 오른쪽", tb[tb.length - 1].id === "btnLock", tb.map(b => b.id).join(","));
+
+    /* 마지막으로 건드린 카드가 맨 위 */
+    E("clearSel(); topNodeId = null; renderAll();");
+    await wait(20);
+    const zi = id => +w.getComputedStyle(doc.querySelector('[data-id="' + id + '"]')).getPropertyValue("z-index");
+    E("_justDragged = false");
+    doc.querySelector('[data-id="u1"]').dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(40);
+    T("18-12 클릭한 카드가 최상단", E("topNodeId") === "u1" && zi("u1") > zi("u2"));
+    E("_justDragged = false");
+    doc.querySelector('[data-id="u2"]').dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(40);
+    T("18-13 다음에 클릭한 카드가 그 위로", E("topNodeId") === "u2" && zi("u2") > zi("u1"));
+
+    /* 펼침·선택 카드는 불투명 배경 */
+    const bg = w.getComputedStyle(doc.querySelector('[data-id="u2"]')).background || "";
+    T("18-14 최상단 카드는 불투명 바탕을 깐다", bg.includes("linear-gradient") || bg.includes("gradient"), bg.slice(0, 80));
+    E("clearSel(); topNodeId = null; closePanel(); renderAll();");
+  }
+
   done();
 })();

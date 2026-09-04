@@ -111,6 +111,7 @@ body.edit .tab:hover .tacts,body.edit .tab.act .tacts{display:inline-flex}
 .ta{font-size:11px;color:var(--text3);padding:2px 4px;border-radius:5px;line-height:1}
 .ta:hover{color:var(--text);background:var(--border)}
 .ta.td:hover{color:var(--danger)}
+.tabacts{display:flex;gap:4px;flex:none;align-items:center}
 .tabadd{
   font-size:15px;color:var(--text3);padding:3px 10px 5px;border-radius:8px;margin-bottom:4px;
 }
@@ -200,6 +201,14 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .node.sel{z-index:2}
 .node.exp{z-index:3}
 .node.exp.sel{z-index:4}
+.node.top{z-index:6}                     /* 마지막으로 건드린 카드가 무조건 위 */
+/* 펼치거나 선택한 카드는 불투명하게 — 반투명이면 겹친 글씨가 비쳐 읽기 어렵다.
+   타입 색조를 불투명한 바탕 위에 얹어 색은 유지하면서 뒤를 가린다. */
+.node.exp, .node.sel, .node.top{
+  background:linear-gradient(var(--c-bg, var(--surface)), var(--c-bg, var(--surface))), var(--bg2);
+  box-shadow:var(--shadow-sm),0 6px 24px rgba(0,0,0,.28)
+}
+.node.sel{border-color:var(--accent2)}
 .node.sel{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(165,148,255,.45),0 0 22px rgba(124,106,247,.35)}
 .node.preview .nn{font-weight:700}
 .node.preview{animation:pulseGold 1.5s ease-in-out infinite}
@@ -278,6 +287,12 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .row-btns{display:flex;gap:8px;flex-wrap:wrap}
 .row-btns .btn{flex:1;min-width:150px}
 .hint{margin-top:7px;color:var(--text3);font-size:12px;line-height:1.6}
+#btnSearch{
+  position:absolute;left:14px;top:14px;z-index:39;width:34px;height:34px;
+  border:1px solid var(--border2);border-radius:10px;background:var(--bg2);
+  color:var(--text2);font-size:15px;line-height:1;box-shadow:var(--shadow-sm)
+}
+#btnSearch:hover{color:var(--text);border-color:var(--accent2)}
 #searchBar{
   position:absolute;left:14px;top:14px;z-index:40;display:flex;align-items:center;gap:6px;
   background:var(--bg2);border:1px solid var(--border2);border-radius:12px;
@@ -530,7 +545,11 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
 <div id="tabbar">
   <div class="logo">WORLDMIND</div>
   <div id="tabs"></div>
-  <button id="tabAdd" class="tabadd eo" title="세계관 추가">＋</button>
+  <div class="tabacts">
+    <button id="tabAdd" class="tabadd eo" title="세계관 추가">＋</button>
+    <button id="tabDup" class="tabadd eo" title="현재 세계관 복제">⧉</button>
+    <button id="tabDel" class="tabadd eo td" title="현재 세계관 삭제">✕</button>
+  </div>
 </div>
 
 <div id="topbar">
@@ -540,14 +559,13 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
   <button class="tb eo" id="btnUndo" title="실행 취소 (Ctrl+Z) / 다시 실행 (Ctrl+Shift+Z)">↩ 되돌리기</button>
   <span id="syncChip"><i class="dot off" id="syncDot"></i><span id="syncTxt">오프라인</span></span>
   <span class="sp"></span>
-  <button class="tb" id="btnSearch" title="노드 검색 (Ctrl+F)">🔍</button>
   <button class="tb" id="btnTypes" title="이 탭의 노드 타입 편집">🏷 노드 타입</button>
   <button class="tb" id="btnImportAI" title="문서·drawio 를 노드로 가져오기">📥 가져오기</button>
-  <button class="tb" id="btnLock">🔒 보기 전용</button>
   <button class="tb" id="btnWorld">🌐 세계관</button>
   <button class="tb" id="btnChat">💬 대화</button>
   <button class="tb" id="btnEvents">📜 사건</button>
   <button class="tb" id="btnSettings">⚙ 설정</button>
+  <button class="tb" id="btnLock">🔒 보기 전용</button>
   <input type="file" id="fileImport" accept=".json,application/json" hidden>
   <input type="file" id="fileImportAI" accept=".txt,.md,.markdown,.csv,.xml,.drawio,.json,text/*" hidden>
 </div>
@@ -563,6 +581,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
     <div id="linkBanner" hidden>🔗 관계를 연결할 대상 노드를 클릭하세요 <button id="linkCancel">ESC 취소</button></div>
     <div id="pickBanner" hidden>📜 사건에 등장할 노드를 클릭·Ctrl+드래그로 선택하세요 — <b id="pickCount">0</b>개
       <button id="pickGo" class="go">✨ 생성</button><button id="pickCancel">ESC 취소</button></div>
+    <button id="btnSearch" title="노드 검색 (Ctrl+F)">🔍</button>
     <div id="searchBar" hidden>
       <input id="searchInput" placeholder="노드 이름·설명 검색" maxlength="60" spellcheck="false">
       <span id="searchCount">0</span>
@@ -791,6 +810,7 @@ let lastPointer = null;                  // 캔버스 기준 마지막 마우스
 let altSolo = false;                     // Alt를 단독으로 눌렀다 뗐는가(Alt+Tab 등 조합 제외)
 let clipBuf = null;                      // Ctrl+C 로 담아둔 노드·관계 (앱 내부 붙여넣기용)
 let searchHits = [], searchIdx = -1;     // 검색 결과 노드 id 목록과 현재 위치
+let topNodeId = null;                    // 마지막으로 건드린 노드 — 항상 맨 위에 그린다(런타임 전용)
 let searchQuery = '';                    // 마지막으로 실행한 검색어(정규화) — 재검색/순회 구분용
 let geomFast = false;                    // 드래그/트윈 중 곡선 k 캐시 사용
 let view = {z:0.8, px:0, py:0};
@@ -1963,6 +1983,7 @@ function renderNodes(){
     const el = document.createElement('div');
     el.className = 'node'
       + (searchHits.includes(n.id) ? (searchHits[searchIdx] === n.id ? ' found cur' : ' found') : '')
+      + (topNodeId === n.id ? ' top' : '')
       + (n._exp ? ' exp' : '')
       + (isSel(n.id) ? ' sel' : '')
       + (n._aiPreview ? ' preview' : '');
@@ -2237,6 +2258,7 @@ function wireNode(el, n){
   el.addEventListener('click', e => {
     e.stopPropagation();
     if(_justDragged){ _justDragged = false; return; }   // ⚠ 드래그 후 펼침 방지
+    topNodeId = n.id;                                   // 마지막으로 건드린 카드를 맨 위로
     if(linkMode.active){ finishLink(n.id); return; }
     if(evPick.active){ togglePick(n.id); return; }      // 사건 생성 — 노드 선택 모드
     if(e.ctrlKey || e.metaKey || e.shiftKey){           // 다중 선택 토글
@@ -2872,12 +2894,14 @@ function bindCanvasEvents(){
 function openSearch(){
   const bar = $('#searchBar'); if(!bar) return;
   bar.hidden = false;
+  $('#btnSearch').hidden = true;          // 같은 자리라 겹치지 않게
   const inp = $('#searchInput');
   inp.focus(); inp.select();
 }
 function closeSearch(){
   const bar = $('#searchBar'); if(!bar) return;
   bar.hidden = true;
+  $('#btnSearch').hidden = false;
   searchHits = []; searchIdx = -1;
   updateSearchUI();
   renderNodes();                      // 강조 클래스 제거
@@ -4407,14 +4431,10 @@ function renderTabs(){
     const el = document.createElement('div');
     el.className = 'tab' + (t.id === activeTabId ? ' act' : '');
     el.innerHTML =
-      `<span class="tt" title="${escHtml(t.title)}">${escHtml(t.title || '무제')}</span>` +
-      `<span class="tacts"><button class="ta" data-a="d" title="복제">⧉</button>` +
-      `<button class="ta td" data-a="x" title="삭제">✕</button></span>`;
+      `<span class="tt" title="${escHtml(t.title)}">${escHtml(t.title || '무제')}</span>`;
     const tt = el.querySelector('.tt');
     tt.onclick = () => switchTab(t.id);
-    tt.ondblclick = () => { if(editMode) openRenameTab(t); };
-    el.querySelector('[data-a=d]').onclick = e => { e.stopPropagation(); duplicateTab(t); };
-    el.querySelector('[data-a=x]').onclick = e => { e.stopPropagation(); askDeleteTab(t); };
+    tt.ondblclick = () => { if(editMode) openRenameTab(t); };   // 이름 변경은 더블클릭
     tabsEl.appendChild(el);
   });
 }
@@ -4899,6 +4919,8 @@ function bindStaticUI(){
   bindCanvasEvents();
 
   $('#tabAdd').onclick = addTab;
+  $('#tabDup').onclick = () => { const t = curTab(); if(t) duplicateTab(t); };
+  $('#tabDel').onclick = () => { const t = curTab(); if(t) askDeleteTab(t); };
   $('#btnAddNode').onclick = () => openNodeModal(null);
   $('#btnAiGen').onclick = openAiGenModal;
   $('#btnLayout').onclick = askAutoLayout;
