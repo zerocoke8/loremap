@@ -48,6 +48,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§5-2 캔버스 단축키` | Tab(`pointerWorld`로 커서 위치 노드 추가) · Delete(`askDeleteSelection`) · Alt 단독 탭(`altSolo`→`startLink`). `shortcutBusy()`가 모달·배너·컨텍스트 메뉴 중 차단 |
 | `§5-14 노드 타입 관리` | `openTypeManager`(탭별 타입 추가·이름변경·순서·삭제). 삭제된 타입의 노드는 최하위 타입으로 이동 |
 | `§5-16 노드 가져오기` | `openImportModal`/`runImport`/`applyImportResult`. `parseDrawio`(mxCell 파싱+압축 해제), `layoutImported`+`freeOrigin`(추가분만 배치 — 기존 좌표 불변) |
+| `§5-14 노드 검색` | `runSearch`/`stepSearch`/`centerOnNode`. `searchHits`+`searchIdx`+`searchQuery`(재검색·순회 구분). 강조는 `renderNodes` 가 `.found`/`.cur` 클래스로 |
 | `§5-15 선택 영역 복사` | `copySelection`/`pasteClip`(내부 버퍼 `clipBuf`), `copySelectionImage`(캔버스에 직접 그려 투명 PNG). 연결선은 화면 SVG 의 `d`(M x y Q …)를 그대로 재현한다 |
 | `§5-4 노드 자동 정렬` | `computeRadialLayout`, `tweenTo` |
 | `§6 AI 호출 헬퍼` | `callClaude/callGemini` → 모두 `apiPost`로 Worker 경유 |

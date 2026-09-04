@@ -656,5 +656,87 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T("13-15 구조 되돌리기가 다른 탭 내용을 건드리지 않음", E("tabs[0].nodes.length") === 4);
   }
 
+  /* ---- 14. 노드 검색 + 겹침 우선순위 ---- */
+  {
+    const key = (k, opt, el) => {
+      const ev = new w.KeyboardEvent("keydown", Object.assign({key:k, bubbles:true, cancelable:true}, opt));
+      (el || doc).dispatchEvent(ev); return ev;
+    };
+    E("clearSel(); tabs.length = 1; tabs[0].nodes.length=0; tabs[0].edges.length=0; activeTabId = tabs[0].id;");
+    E("tabs[0].nodes.push(" +
+      "{id:'f1', type:'char', name:'은빛 기사', desc:'북방 출신', x:1000, y:1000}," +
+      "{id:'f2', type:'space', name:'탑', desc:'은빛으로 빛난다', x:2200, y:1000}," +
+      "{id:'f3', type:'item', name:'검', desc:'평범하다', x:1000, y:2200});");
+    E("setEditMode(true); commit(); view.z=1; view.px=0; view.py=0; applyView(); renderAll();");
+    await wait(30);
+
+    /* Ctrl+F 로 열린다 */
+    const ev = key("f", {ctrlKey:true});
+    await wait(30);
+    T("14-1 Ctrl+F 로 검색창 열림", !doc.getElementById("searchBar").hidden && ev.defaultPrevented === true);
+    T("14-2 브라우저 찾기 대신 입력칸에 포커스", doc.activeElement && doc.activeElement.id === "searchInput");
+
+    /* 이름·설명 양쪽에서 찾는다 */
+    const inp = doc.getElementById("searchInput");
+    inp.value = "은빛";
+    inp.dispatchEvent(new w.KeyboardEvent("keydown", {key:"Enter", bubbles:true, cancelable:true}));
+    await wait(40);
+    T("14-3 이름·설명 양쪽에서 검색 (f1 이름 · f2 설명)",
+      E("searchHits.slice().sort().join(',')") === "f1,f2", E("searchHits.join(',')"));
+    T("14-4 결과 개수 표시", doc.getElementById("searchCount").textContent === "1 / 2");
+    T("14-5 찾은 노드에 강조 클래스", doc.querySelectorAll(".node.found").length === 2);
+    T("14-6 현재 항목만 cur", doc.querySelectorAll(".node.found.cur").length === 1);
+
+    /* 첫 결과가 화면 중앙으로 온다 */
+    const cx = E("(function(){var r=wrapEl.getBoundingClientRect();var c=centerOf(searchHits[searchIdx]);" +
+      "return Math.abs((c.x*view.z+view.px) - r.width/2);})()");
+    T("14-7 현재 결과가 화면 중앙", cx < 1, cx);
+
+    /* ↓ 로 다음 결과 이동 */
+    key("ArrowDown", {}, inp);
+    await wait(30);
+    T("14-8 ↓ 로 다음 결과", E("searchIdx") === 1 && doc.getElementById("searchCount").textContent === "2 / 2");
+    const cx2 = E("(function(){var r=wrapEl.getBoundingClientRect();var c=centerOf(searchHits[searchIdx]);" +
+      "return Math.abs((c.x*view.z+view.px) - r.width/2);})()");
+    T("14-9 이동한 결과도 중앙", cx2 < 1, cx2);
+    key("ArrowDown", {}, inp);
+    await wait(30);
+    T("14-10 끝에서 처음으로 순환", E("searchIdx") === 0);
+    inp.blur();
+    key("ArrowDown");
+    await wait(30);
+    T("14-10b 캔버스에서도 ↑↓ 로 이동", E("searchIdx") === 1);
+    inp.focus();
+
+    /* 없는 말은 0건 */
+    inp.value = "없는말";
+    inp.dispatchEvent(new w.KeyboardEvent("keydown", {key:"Enter", bubbles:true, cancelable:true}));
+    await wait(40);
+    T("14-11 없으면 0건 + 강조 없음", E("searchHits.length") === 0 && doc.querySelectorAll(".node.found").length === 0);
+
+    /* ESC 로 닫히고 강조가 사라진다 */
+    inp.value = "은빛";
+    inp.dispatchEvent(new w.KeyboardEvent("keydown", {key:"Enter", bubbles:true, cancelable:true}));
+    await wait(40);
+    inp.dispatchEvent(new w.KeyboardEvent("keydown", {key:"Escape", bubbles:true, cancelable:true}));
+    await wait(30);
+    T("14-12 ESC 로 닫힘 + 강조 해제",
+      doc.getElementById("searchBar").hidden && doc.querySelectorAll(".node.found").length === 0);
+
+    /* 겹침: 펼친 카드가 위로 */
+    const z = sel => {
+      const el = doc.querySelector(sel);
+      return el ? w.getComputedStyle(el).getPropertyValue("z-index") : null;
+    };
+    E("clearSel(); tabs[0].nodes[0]._exp = true; sel = {nodeIds:['f2'], edgeId:null}; renderAll();");
+    await wait(30);
+    T("14-13 펼친 카드가 보통 카드보다 위", +z('[data-id="f1"]') > +z('[data-id="f3"]'), [z('[data-id="f1"]'), z('[data-id="f3"]')]);
+    T("14-14 선택한 카드도 보통보다 위", +z('[data-id="f2"]') > +z('[data-id="f3"]'));
+    T("14-15 펼친 카드가 선택한 카드보다 위", +z('[data-id="f1"]') > +z('[data-id="f2"]'));
+    T("14-16 카드 배경 블러 제거", !w.getComputedStyle(doc.querySelector('[data-id="f1"]')).backdropFilter ||
+      w.getComputedStyle(doc.querySelector('[data-id="f1"]')).backdropFilter === "none");
+    E("tabs[0].nodes[0]._exp = false; clearSel(); renderAll();");
+  }
+
   done();
 })();

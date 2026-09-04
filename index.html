@@ -172,7 +172,9 @@ body.edit div.eo,body.edit span.eo{display:flex}
   position:absolute;pointer-events:auto;touch-action:none;
   min-width:120px;max-width:240px;
   border:1.5px solid var(--c, var(--border2));border-radius:12px;
-  background:var(--c-bg, var(--surface));backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+  /* backdrop-filter 는 겹친 카드 뒤를 뿌옇게 만들어 읽기 어려웠다 — 제거 */
+  background:var(--c-bg, var(--surface));
+  z-index:1;
   box-shadow:var(--shadow-sm);
   padding:9px 12px;cursor:pointer;user-select:none;
   transition:box-shadow .18s,border-color .18s;
@@ -188,6 +190,10 @@ body.edit div.eo,body.edit span.eo{display:flex}
   max-height:200px;overflow:auto;
 }
 .node.exp .nd{display:block}
+/* 펼치거나 선택한 카드는 항상 다른 카드 위에 — 커진 카드가 가려지지 않게 */
+.node.sel{z-index:2}
+.node.exp{z-index:3}
+.node.exp.sel{z-index:4}
 .node.sel{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(165,148,255,.45),0 0 22px rgba(124,106,247,.35)}
 .node.preview .nn{font-weight:700}
 .node.preview{animation:pulseGold 1.5s ease-in-out infinite}
@@ -258,6 +264,24 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .row-btns{display:flex;gap:8px;flex-wrap:wrap}
 .row-btns .btn{flex:1;min-width:150px}
 .hint{margin-top:7px;color:var(--text3);font-size:12px;line-height:1.6}
+#searchBar{
+  position:absolute;left:14px;top:14px;z-index:40;display:flex;align-items:center;gap:6px;
+  background:var(--bg2);border:1px solid var(--border2);border-radius:12px;
+  padding:6px 8px;box-shadow:var(--shadow-sm)
+}
+#searchBar input{
+  width:190px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;
+  padding:5px 9px;color:var(--text);font-size:13px;font-family:inherit
+}
+#searchBar button{
+  width:28px;height:28px;flex:none;border:1px solid var(--border2);border-radius:8px;
+  background:var(--bg3);color:var(--text2);font-size:13px;line-height:1
+}
+#searchBar button:disabled{opacity:.3;cursor:not-allowed}
+#searchCount{font-size:12px;color:var(--text3);min-width:42px;text-align:center}
+/* 검색 결과 강조 — 현재 항목은 더 강하게 */
+.node.found{box-shadow:0 0 0 2px var(--gold),0 0 18px rgba(240,201,106,.45)}
+.node.found.cur{box-shadow:0 0 0 3px var(--gold),0 0 30px rgba(240,201,106,.85);z-index:5}
 #marquee{
   position:absolute;z-index:16;pointer-events:none;border-radius:4px;
   border:1.5px dashed var(--accent2);background:rgba(124,106,247,.10);
@@ -481,6 +505,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
   <button class="tb eo" id="btnUndo" title="실행 취소 (Ctrl+Z) / 다시 실행 (Ctrl+Shift+Z)">↩ 되돌리기</button>
   <span id="syncChip"><i class="dot off" id="syncDot"></i><span id="syncTxt">오프라인</span></span>
   <span class="sp"></span>
+  <button class="tb" id="btnSearch" title="노드 검색 (Ctrl+F)">🔍</button>
   <button class="tb" id="btnTypes" title="이 탭의 노드 타입 편집">🏷 노드 타입</button>
   <button class="tb" id="btnImportAI" title="문서·drawio 를 노드로 가져오기">📥 가져오기</button>
   <button class="tb" id="btnLock">🔒 보기 전용</button>
@@ -503,6 +528,13 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
     <div id="linkBanner" hidden>🔗 관계를 연결할 대상 노드를 클릭하세요 <button id="linkCancel">ESC 취소</button></div>
     <div id="pickBanner" hidden>📜 사건에 등장할 노드를 클릭·Ctrl+드래그로 선택하세요 — <b id="pickCount">0</b>개
       <button id="pickGo" class="go">✨ 생성</button><button id="pickCancel">ESC 취소</button></div>
+    <div id="searchBar" hidden>
+      <input id="searchInput" placeholder="노드 이름·설명 검색" maxlength="60" spellcheck="false">
+      <span id="searchCount">0</span>
+      <button id="searchPrev" title="이전 (↑)">↑</button>
+      <button id="searchNext" title="다음 (↓)">↓</button>
+      <button id="searchClose" title="닫기 (ESC)">✕</button>
+    </div>
     <div id="marquee" hidden></div>
     <div id="genOverlay" hidden><div class="spin"></div><div>AI가 노드를 생성하는 중…</div></div>
     <div id="aiPanel" hidden>
@@ -667,6 +699,8 @@ let spaceHeld = false;                   // Space+드래그 = 팬 강제(Ctrl �
 let lastPointer = null;                  // 캔버스 기준 마지막 마우스 위치(Tab 노드 생성 지점)
 let altSolo = false;                     // Alt를 단독으로 눌렀다 뗐는가(Alt+Tab 등 조합 제외)
 let clipBuf = null;                      // Ctrl+C 로 담아둔 노드·관계 (앱 내부 붙여넣기용)
+let searchHits = [], searchIdx = -1;     // 검색 결과 노드 id 목록과 현재 위치
+let searchQuery = '';                    // 마지막으로 실행한 검색어(정규화) — 재검색/순회 구분용
 let geomFast = false;                    // 드래그/트윈 중 곡선 k 캐시 사용
 let view = {z:0.8, px:0, py:0};
 let linkMode = {active:false, from:null};
@@ -1826,6 +1860,7 @@ function renderNodes(){
   tab.nodes.forEach(n => {
     const el = document.createElement('div');
     el.className = 'node'
+      + (searchHits.includes(n.id) ? (searchHits[searchIdx] === n.id ? ' found cur' : ' found') : '')
       + (n._exp ? ' exp' : '')
       + (isSel(n.id) ? ' sel' : '')
       + (n._aiPreview ? ' preview' : '');
@@ -2648,6 +2683,59 @@ function bindCanvasEvents(){
     }
   }
 }
+/* ==================================================================
+ * §5-14 노드 검색 — 이름·설명에서 찾아 강조하고 ↑↓ 로 옮겨 다닌다
+ * ================================================================== */
+function openSearch(){
+  const bar = $('#searchBar'); if(!bar) return;
+  bar.hidden = false;
+  const inp = $('#searchInput');
+  inp.focus(); inp.select();
+}
+function closeSearch(){
+  const bar = $('#searchBar'); if(!bar) return;
+  bar.hidden = true;
+  searchHits = []; searchIdx = -1;
+  updateSearchUI();
+  renderNodes();                      // 강조 클래스 제거
+}
+function runSearch(q){
+  const tab = curTab();
+  const t = String(q || '').trim().toLowerCase();
+  searchHits = (!t || !tab) ? [] : tab.nodes.filter(n => !n._aiPreview && (
+      String(n.name || '').toLowerCase().includes(t) ||
+      String(n.desc || '').toLowerCase().includes(t)
+    )).map(n => n.id);
+  searchQuery = t;
+  searchIdx = searchHits.length ? 0 : -1;
+  updateSearchUI();
+  renderNodes();
+  if(searchIdx >= 0) centerOnNode(searchHits[0]);
+  else if(t) toast('찾는 노드가 없습니다');
+}
+function stepSearch(d){
+  if(!searchHits.length) return;
+  searchIdx = (searchIdx + d + searchHits.length) % searchHits.length;
+  updateSearchUI();
+  renderNodes();
+  centerOnNode(searchHits[searchIdx]);
+}
+function updateSearchUI(){
+  const c = $('#searchCount'); if(!c) return;
+  c.textContent = searchHits.length ? (searchIdx + 1) + ' / ' + searchHits.length : '0';
+  const off = searchHits.length < 2;
+  $('#searchPrev').disabled = off;
+  $('#searchNext').disabled = off;
+}
+/* 줌은 그대로 두고 해당 노드가 화면 중앙에 오도록 팬 */
+function centerOnNode(id){
+  const c = centerOf(id); if(!c || !wrapEl) return;
+  const r = wrapEl.getBoundingClientRect();
+  view.px = r.width / 2 - c.x * view.z;
+  view.py = r.height / 2 - c.y * view.z;
+  applyView();
+}
+
 /* ==================================================================
  * §5-15 선택 영역 복사 — Ctrl+C 는 두 가지를 동시에 한다
  *   ① 시스템 클립보드에 PNG(배경 투명)  → 다른 앱에 그림으로 붙여넣기
@@ -4421,6 +4509,25 @@ function bindStaticUI(){
   $('#btnWorld').onclick = () => openPanel('world');
   $('#btnChat').onclick = () => openPanel('chat');
   $('#btnEvents').onclick = () => openPanel('events');
+  $('#btnSearch').onclick = () => { const b = $('#searchBar'); b.hidden ? openSearch() : closeSearch(); };
+  $('#searchClose').onclick = closeSearch;
+  $('#searchPrev').onclick = () => stepSearch(-1);
+  $('#searchNext').onclick = () => stepSearch(1);
+  $('#searchInput').addEventListener('keydown', e => {
+    e.stopPropagation();                       // 캔버스 단축키가 가로채지 않게
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      /* 검색어를 바꿨으면 다시 찾고, 그대로면 다음 결과로 넘어간다 */
+      const v = String(e.target.value || '').trim().toLowerCase();
+      if(v !== searchQuery || !searchHits.length) runSearch(e.target.value);
+      else stepSearch(e.shiftKey ? -1 : 1);
+      return;
+    }
+    if(e.key === 'ArrowDown'){ e.preventDefault(); stepSearch(1); return; }
+    if(e.key === 'ArrowUp'){ e.preventDefault(); stepSearch(-1); return; }
+    if(e.key === 'Escape'){ e.preventDefault(); closeSearch(); return; }
+  });
+  $('#searchInput').addEventListener('input', e => { if(!e.target.value.trim()) runSearch(''); });
   $('#btnTypes').onclick = openTypeManager;
   $('#btnImportAI').onclick = openImportModal;
   $('#btnSettings').onclick = openSettings;
@@ -4492,6 +4599,14 @@ function bindStaticUI(){
       openNodeModal(null, pointerWorld());
       return;
     }
+    /* Ctrl+F — 노드 검색 (브라우저 찾기 대신 앱 검색) */
+    if((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'f' || e.key === 'F')){
+      e.preventDefault(); openSearch(); return;
+    }
+    /* 검색 결과가 있으면 캔버스에서도 ↑↓ 로 옮겨 다닌다 */
+    if(searchHits.length && !typing() && !shortcutBusy() && (e.key === 'ArrowDown' || e.key === 'ArrowUp')){
+      e.preventDefault(); stepSearch(e.key === 'ArrowDown' ? 1 : -1); return;
+    }
     /* Ctrl+C — 선택 영역을 이미지(외부용) + 노드/관계(내부용)로 함께 복사 */
     if((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && !typing() && !shortcutBusy() && (e.key === 'c' || e.key === 'C')){
       if(sel.nodeIds.length){ e.preventDefault(); copySelection(); return; }
@@ -4516,6 +4631,7 @@ function bindStaticUI(){
     }
     if(e.key !== 'Escape') return;
     if(!ctxEl.hidden){ closeCtx(); return; }
+    if(!$('#searchBar').hidden){ closeSearch(); return; }
     if(linkMode.active){ exitLink(); return; }   // §9 ESC → 관계 추가 취소
     if(evPick.active){ exitEventPick(); clearSel(); renderAll(); return; }
     const tm = topModal();
