@@ -428,6 +428,7 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .np-desc-v{margin-top:12px;font-size:13.5px;line-height:1.75;color:var(--text2);
   white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
 #npBody{padding-bottom:22px}          /* 메모 아래로 숨 쉴 공간 */
+#npMemo{margin-top:12px}              /* 머리글 없이 설명 바로 아래 온다 */
 .np-links{display:flex;flex-direction:column;gap:6px}
 .np-link{display:flex;gap:6px;align-items:center}
 .nt.tag{border-style:dashed;color:var(--text3)}
@@ -553,6 +554,13 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 /* 설정 — 테마 선택 */
 .theme-opts{display:flex;gap:8px}
+/* 테마는 설명이 길어 2×2 로 놓는다 (한 줄에 4개면 글씨가 세로로 접힌다) */
+.theme-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:620px){.theme-grid{grid-template-columns:1fr}}
+.to-t{display:flex;flex-direction:column;gap:1px;min-width:0}
+.to-t b{font-weight:600;font-size:13px;line-height:1.4}
+.to-t i{font-style:normal;font-size:11.5px;line-height:1.45;color:var(--text3)}
+/* 설명은 …로 자르지 않고 접는다 — 폰트·확대 배율에 따라 한 줄에 겨우 들어가던 폭이었다 */
 .dlg-b .theme-opt{flex:1;display:flex;align-items:center;gap:9px;margin:0;padding:9px 11px;
   border:1px solid var(--border);border-radius:10px;cursor:pointer;background:var(--bg3);font-size:12.5px;color:var(--text2)}
 .dlg-b .theme-opt:has(input:checked){border-color:var(--accent);color:var(--text)}
@@ -706,7 +714,6 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
         <div id="npProps" class="np-table"></div>
         <div id="npDescView" class="np-desc-v"></div>
         <textarea id="npDesc" class="np-desc" rows="5" placeholder="이 요소에 대한 설정 — 자동 저장됩니다"></textarea>
-        <div class="rp-sec">메모</div>
         <textarea id="npMemo" rows="6" class="eo" placeholder="이 노드에 대한 메모 — 주소를 붙여넣으면 링크가 됩니다"></textarea>
         <div id="npMemoLinks" class="np-links"></div>
       </div>
@@ -2086,7 +2093,7 @@ function renderNodes(){
     el.innerHTML =
       `<div class="nh">${nodeTypeLabels(tab, n).map(l => `<span class="nt">${escHtml(l)}</span>`).join('')}
         ${(n.tags || []).map(t => `<span class="nt tag">${escHtml(t)}</span>`).join('')}
-        ${(n.imgs && n.imgs.length) ? `<span class="nt">🖼 ${n.imgs.length}</span>` : ''}</div>` +
+        </div>` +
       `<div class="nn">${escHtml(n.name || '(이름 없음)')}</div>` +
       (n.props && n.props.some(p => p.v)
         ? `<div class="np">${n.props.filter(p => p.v).slice(0,4).map(p => `<span class="npi"><b>${escHtml(p.k)}</b>${escHtml(p.v)}</span>`).join('')}</div>`
@@ -3737,12 +3744,24 @@ let flushPendingText = () => {};
    타입을 상위→하위 순서로 놓고, 각 타입에 속한 노드를 나열한다.
    노드가 여러 타입을 겸하면 주 타입(types[0]) 아래에만 넣어 중복을 막는다.
    같은 타입 안에서는 부모-자식 관계를 들여쓰기로 보여 준다. */
-const tocClosed = new Set();          // 접어둔 타입 (이번 세션 동안만 기억)
+/* 접어둔 타입 — 자주 안 보는 묶음을 새로고침마다 다시 접지 않도록 이 브라우저에 남긴다 */
+const TOC_KEY = 'wm_toc';
+function loadTocClosed(){
+  try{
+    const a = JSON.parse(localStorage.getItem(TOC_KEY) || '[]');
+    return Array.isArray(a) ? a.filter(v => typeof v === 'string').slice(0, 200) : [];
+  }catch(_){ return []; }
+}
+function saveTocClosed(){
+  try{ localStorage.setItem(TOC_KEY, JSON.stringify([...tocClosed])); }catch(_){}
+}
+const tocClosed = new Set(loadTocClosed());
 const TOC_DBL_MS = 400;               // 이 안에 같은 항목을 또 누르면 더블클릭
 let tocSig = null;                    // 마지막으로 그린 목차 HTML (같으면 다시 그리지 않는다)
 function toggleTocSection(k){
   if(!k) return;
   tocClosed.has(k) ? tocClosed.delete(k) : tocClosed.add(k);
+  saveTocClosed();
   renderTocPanel();
 }
 function renderTocPanel(){
@@ -3824,6 +3843,32 @@ function panelNode(){
   if(!tab || sel.nodeIds.length !== 1) return null;
   return nodeById(tab, sel.nodeIds[0]) || null;
 }
+/* 설명·메모 칸 높이 — 사용자가 손잡이로 조절한 크기를 기억한다 */
+const NP_SIZE_KEY = 'wm_npsize';
+const NP_H = /^\d{1,4}px$/;                     // 남의 손을 탄 값이 style 로 들어가지 않게
+let npSize = (() => {
+  try{
+    const o = JSON.parse(localStorage.getItem(NP_SIZE_KEY) || '{}') || {};
+    const out = {};
+    ['desc','memo'].forEach(k => { if(NP_H.test(String(o[k]))) out[k] = o[k]; });
+    return out;
+  }catch(_){ return {}; }
+})();
+function applyNpSize(){
+  const d = $('#npDesc'), m = $('#npMemo');
+  if(npSize.desc && d.style.height !== npSize.desc) d.style.height = npSize.desc;
+  if(npSize.memo && m.style.height !== npSize.memo) m.style.height = npSize.memo;
+}
+function rememberNpSize(){
+  const next = {};
+  const d = $('#npDesc').style.height, m = $('#npMemo').style.height;
+  if(NP_H.test(d)) next.desc = d;
+  if(NP_H.test(m)) next.memo = m;
+  if(next.desc === npSize.desc && next.memo === npSize.memo) return;
+  npSize = next;
+  try{ localStorage.setItem(NP_SIZE_KEY, JSON.stringify(npSize)); }catch(_){}
+}
+
 function renderNodePanel(){
   const tab = curTab();
   const n = panelNode();
@@ -3871,6 +3916,7 @@ function renderNodePanel(){
   de.readOnly = !editMode;
   /* 편집 모드면 고칠 수 있는 칸, 아니면 글로 보여 준다 (높이를 계산하지 않는다) */
   de.hidden = !editMode;
+  applyNpSize();                          // 지난번에 조절해 둔 높이로
   const dv = $('#npDescView');
   dv.hidden = editMode;
   if(!editMode) dv.textContent = n.desc || '설명이 없습니다.';
@@ -4634,6 +4680,7 @@ function openVisitModal(node){
  * §5-1 탭 관리
  * ================================================================== */
 function renderTabs(){
+  syncTabLocation();
   tabsEl.innerHTML = '';
   tabs.forEach(t => {
     const el = document.createElement('div');
@@ -4645,6 +4692,34 @@ function renderTabs(){
     tt.ondblclick = () => { if(editMode) openRenameTab(t); };   // 이름 변경은 더블클릭
     tabsEl.appendChild(el);
   });
+}
+
+/* ---------------- §5-1b 탭 주소 ----------------
+   GitHub Pages 는 정적 호스팅이라 /loremap/2 같은 경로는 404 다.
+   그래서 # 뒤에 붙인다: https://…/loremap/#2 → 두 번째 탭이 열린다.
+   쓸 때는 순번(사람이 읽기 쉽다), 읽을 때는 순번·탭 id·탭 이름을 모두 받는다.
+   ⚠ 순번이라 앞의 탭을 지우면 예전 주소가 다른 탭을 가리킨다. */
+const LAST_TAB_KEY = 'wm_lasttab';
+function hashTarget(){
+  let h = '';
+  try{ h = decodeURIComponent(String(location.hash || '').replace(/^#/, '')).trim(); }catch(_){}
+  if(!h) return '';
+  if(/^\d{1,4}$/.test(h)) return tabs[+h - 1]?.id || '';      // #2 = 두 번째 탭
+  const byId = tabs.find(t => t.id === h);                     // #i1005 = 그 탭
+  if(byId) return byId.id;
+  return tabs.find(t => t.title === h)?.id || '';              // #이름 도 받는다
+}
+/* 주소와 '마지막으로 보던 탭'을 지금 상태에 맞춘다. 값이 그대로면 아무것도 쓰지 않는다. */
+function syncTabLocation(){
+  if(!activeTabId) return;
+  const i = tabs.findIndex(t => t.id === activeTabId);
+  if(i < 0) return;
+  const want = '#' + (i + 1);
+  if(location.hash !== want){
+    /* replaceState 라 뒤로가기 기록을 늘리지 않고 hashchange 도 안 뜬다 */
+    try{ history.replaceState(null, '', location.pathname + location.search + want); }catch(_){}
+  }
+  try{ localStorage.setItem(LAST_TAB_KEY, activeTabId); }catch(_){}
 }
 
 function switchTab(id){
@@ -5003,15 +5078,15 @@ function openSettings(){
     onClose: () => { if(!themeCommitted){ applyTheme(prevTheme, false); applyEdgeMode(prevEdge, false); applyEdgeShape(prevShape, false); } }, // 취소 시 미리보기 되돌림
     body:`
       <div><label>테마</label>
-        <div class="theme-opts">
+        <div class="theme-grid">
           <label class="theme-opt"><input type="radio" name="stTheme" value="dark" ${curTheme==='dark'?'checked':''}>
-            <span class="sw dark">가</span>다크 — 검은 배경 · 흰 글씨</label>
+            <span class="sw dark">가</span><span class="to-t"><b>다크</b><i>검은 배경 · 흰 글씨</i></span></label>
           <label class="theme-opt"><input type="radio" name="stTheme" value="light" ${curTheme==='light'?'checked':''}>
-            <span class="sw light">가</span>라이트 — 베이지 배경 · 검은 글씨</label>
+            <span class="sw light">가</span><span class="to-t"><b>라이트</b><i>베이지 배경 · 검은 글씨</i></span></label>
           <label class="theme-opt"><input type="radio" name="stTheme" value="sepia" ${curTheme==='sepia'?'checked':''}>
-            <span class="sw sepia">가</span>세피아 — 종이에 잉크 · 오래 읽기 좋음</label>
+            <span class="sw sepia">가</span><span class="to-t"><b>세피아</b><i>종이에 잉크 · 오래 읽기 좋음</i></span></label>
           <label class="theme-opt"><input type="radio" name="stTheme" value="slate" ${curTheme==='slate'?'checked':''}>
-            <span class="sw slate">가</span>슬레이트 — 차분한 회색 어둠 · 그림 색이 정확함</label>
+            <span class="sw slate">가</span><span class="to-t"><b>슬레이트</b><i>차분한 회색 어둠 · 그림 색이 정확함</i></span></label>
         </div></div>
       <div><label>연결선 색</label>
         <div class="theme-opts">
@@ -5266,6 +5341,15 @@ function bindStaticUI(){
     el.addEventListener('blur', flushText);
   };
   autoText($('#npMemo'), (n, v) => { n.memo = v.slice(0, 4000); });
+  /* 크기 조절은 창 전체에서 받는다 — 손잡이를 칸 밖에서 놓아도 놓치지 않는다.
+     (브라우저는 리사이즈 중 포인터를 그 요소에 묶어두지 않는다) */
+  window.addEventListener('mouseup', rememberNpSize);
+  window.addEventListener('pointerup', rememberNpSize);
+  /* 드래그 도중에도 따라가 두면, 중간에 다시 그려져도 높이가 튀지 않는다 */
+  if(typeof ResizeObserver === 'function'){
+    const ro = new ResizeObserver(rememberNpSize);
+    ['#npDesc', '#npMemo'].forEach(q => ro.observe($(q)));
+  }
   autoText($('#npDesc'), (n, v) => { n.desc = v.slice(0, 8000); });
   $('#wpSave').onclick = () => {
     if(!reqEdit()) return;
@@ -5399,6 +5483,10 @@ async function main(){
   }
 
   if(!tabs.length) tabs = [makeDefaultTab()];
+  /* 처음 열 탭 고르기 — 주소의 #탭 > 지난번에 보던 탭 > 첫 탭 */
+  let want = hashTarget();
+  if(!want){ try{ want = localStorage.getItem(LAST_TAB_KEY) || ''; }catch(_){} }
+  if(want && tabs.find(t => t.id === want)) activeTabId = want;
   if(!tabs.find(t => t.id === activeTabId)) activeTabId = tabs[0].id;
   ensureIdCounter();
   seedUndo();                              // 되돌리기 기준점(탭별 + 구조)
@@ -5411,6 +5499,11 @@ async function main(){
 
   /* §8-4: 자동 저장은 localStorage만 주기 실행. Firebase는 commit() 시 즉시 diff */
   setInterval(() => { if(dirtyLocal){ dirtyLocal = false; saveLocal(); } }, 1200);
+  window.addEventListener('hashchange', () => {
+    const id = hashTarget();
+    if(id && id !== activeTabId) switchTab(id);
+    else syncTabLocation();                  // 모르는 주소면 지금 탭으로 되돌린다
+  });
   window.addEventListener('beforeunload', () => {
     flushPendingText();                      // 0.8초가 차기 전에 닫아도 마지막 글자를 잃지 않는다
     if(dirtyLocal) saveLocal();

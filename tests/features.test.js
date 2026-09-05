@@ -894,7 +894,8 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T("17-3 주소가 Worker 경유", doc.querySelector("#npImgs img").getAttribute("src").includes("/api/img/im_aaa.jpg"));
     T("17-4 설명 입력칸에 기존 값", doc.querySelector("#npImgs .np-cap").value === "초상");
     T("17-5 첫 장은 위로 이동 불가", doc.querySelector('#npImgs [data-a="up"]').disabled === true);
-    T("17-6 카드에 이미지 개수 배지", [...doc.querySelectorAll('[data-id="q1"] .nt')].some(e => e.textContent.includes("2")));
+    /* 카드의 이미지 개수 배지는 없앴다 — 노드 이름을 가리기만 했다 */
+    T("17-6 카드에 개수 배지가 없다", [...doc.querySelectorAll('[data-id="q1"] .nt')].every(e => !e.textContent.includes("🖼")));
 
     /* 순서 바꾸기 */
     doc.querySelectorAll('#npImgs [data-a="up"]')[1].dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
@@ -1094,8 +1095,10 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     E("setEditMode(true); commit(); renderAll(); sel={nodeIds:['d1'], edgeId:null}; openNodePanel();");
     await wait(50);
 
-    /* 제목이 메모로 */
-    T("21-1 제목이 '메모'", [...doc.querySelectorAll("#rpNode .rp-sec")].some(e => e.textContent.trim() === "메모"));
+    /* 메모 머리글은 지웠다 — 안내는 placeholder 가 한다 */
+    T("21-1 메모 머리글이 없다",
+      ![...doc.querySelectorAll("#rpNode .rp-sec")].some(e => e.textContent.trim() === "메모") &&
+      doc.getElementById("npMemo").placeholder.includes("메모"));
 
     /* 설명이 편집 가능 + 자동저장 */
     let de = doc.getElementById("npDesc");
@@ -1245,6 +1248,186 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
       E("(undoMap[activeTabId]||[]).length") === 1 &&
       E("nodeById(curTab(),'d1').desc") === "닫기 직전 글자");
     E("closePanel();");
+  }
+
+  /* ---- 22. 브라우저에 기억하는 것들 · 테마 선택 UI ---- */
+  {
+    E("clearSel(); closePanel();");
+
+    /* 목차 접힘이 localStorage 에 남는다 */
+    E("localStorage.removeItem('wm_toc'); tocClosed.clear();");
+    E("openPanel('list')"); await wait(40);
+    const th = [...doc.querySelectorAll("#tocBody .toc-h")][0];
+    const key = th.dataset.k;
+    th.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(30);
+    T("22-1 접으면 localStorage 에 남는다",
+      JSON.parse(E("localStorage.getItem('wm_toc')") || "[]").includes(key), key);
+    [...doc.querySelectorAll("#tocBody .toc-h")].find(e => e.dataset.k === key)
+      .dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(30);
+    T("22-2 다시 펼치면 목록에서 빠진다",
+      !JSON.parse(E("localStorage.getItem('wm_toc')") || "[]").includes(key));
+    T("22-3 깨진 값은 무시한다",
+      E("localStorage.setItem('wm_toc', '{ 망가진 '); JSON.stringify(loadTocClosed())") === "[]");
+    T("22-4 문자열이 아닌 항목은 거른다",
+      E("localStorage.setItem('wm_toc', '[\"char\",7,null]'); JSON.stringify(loadTocClosed())") === '["char"]');
+
+    /* 설명·메모 칸 높이가 남는다 */
+    E("localStorage.removeItem('wm_npsize'); npSize = {};");
+    E("sel={nodeIds:['d1'], edgeId:null}; setEditMode(true); openNodePanel();");
+    await wait(40);
+    const dsc = doc.getElementById("npDesc"), mem = doc.getElementById("npMemo");
+    /* 브라우저가 크기를 바꾸고 손을 뗀다. 손잡이는 오른쪽 아래 모서리인데
+       resize:vertical 이라 폭은 안 늘어나므로, 실제로는 커서가 칸 밖에서 떨어지는 일이 잦다.
+       그래서 mouseup 을 textarea 가 아니라 바깥 요소에 쏴서 검증한다. */
+    dsc.style.height = "210px";
+    doc.getElementById("rpNode").dispatchEvent(new w.MouseEvent("mouseup", {bubbles:true}));
+    await wait(20);
+    T("22-5 칸 밖에서 손을 떼도 설명 높이가 저장된다",
+      JSON.parse(E("localStorage.getItem('wm_npsize')") || "{}").desc === "210px");
+    mem.style.height = "330px";
+    doc.body.dispatchEvent(new w.MouseEvent("mouseup", {bubbles:true}));
+    await wait(20);
+    T("22-6 아예 화면 바깥이어도 메모 높이가 저장된다",
+      JSON.parse(E("localStorage.getItem('wm_npsize')") || "{}").memo === "330px");
+    dsc.style.height = ""; mem.style.height = "";
+    E("renderNodePanel();"); await wait(30);
+    T("22-7 다시 그리면 저장해 둔 높이로 돌아온다",
+      dsc.style.height === "210px" && mem.style.height === "330px");
+    T("22-8 이상한 값은 style 로 들어가지 않는다", E("(function(){" +
+      "localStorage.setItem('wm_npsize', JSON.stringify({desc:'100px;background:red', memo:'9999999px'}));" +
+      "return NP_H.test('100px;background:red') === false && NP_H.test('9999999px') === false;})()"));
+
+    /* 테마 선택 — 4개를 한 줄에 욱여넣지 않는다 */
+    E("openSettings();"); await wait(50);
+    const grid = doc.querySelector(".dlg-b .theme-grid");
+    T("22-9 테마는 격자로", grid !== null);
+    const opts = [...grid.querySelectorAll(".theme-opt")];
+    T("22-10 네 가지 그대로", opts.length === 4);
+    T("22-11 이름과 설명이 따로", opts.every(o => o.querySelector(".to-t b") && o.querySelector(".to-t i")));
+    T("22-12 이름은 짧게", opts.map(o => o.querySelector(".to-t b").textContent).join(",") ===
+      "다크,라이트,세피아,슬레이트");
+    T("22-13 색 견본은 그대로", opts.every(o => o.querySelector(".sw")));
+    T("22-14 설명을 …로 자르지 않는다",
+      w.getComputedStyle(opts[3].querySelector(".to-t i")).whiteSpace !== "nowrap");
+    T("22-15 값은 THEMES 와 일치",
+      opts.map(o => o.querySelector("input").value).join(",") === E("THEMES.join(',')"));
+    const slate = opts.find(o => o.querySelector("input").value === "slate").querySelector("input");
+    slate.checked = true;
+    slate.dispatchEvent(new w.Event("change", {bubbles:true}));
+    await wait(30);
+    T("22-16 고르면 바로 미리보기", E("curTheme") === "slate");
+    E("[...modalsEl.querySelectorAll('.ov')].forEach(closeModal);");
+    await wait(30);
+    T("22-17 취소하면 원래 테마로", E("curTheme") !== "slate");
+    E("applyTheme('dark', false);");
+  }
+
+  /* ---- 23. 새로 켰을 때 기억한 값이 살아난다 ---- */
+  {
+    const seeded = boot({deploy:{apiBase:''}, pre: win => {
+      win.localStorage.setItem("wm_toc", JSON.stringify(["char"]));
+      win.localStorage.setItem("wm_npsize", JSON.stringify({desc:"188px", memo:"266px"}));
+    }});
+    await wait(400);
+    T("23-1 접어둔 목차가 살아난다", seeded.E("[...tocClosed].join(',')") === "char");
+    T("23-2 칸 높이가 살아난다",
+      seeded.E("JSON.stringify(npSize)") === '{"desc":"188px","memo":"266px"}');
+    seeded.E("tabs[0].nodes.push({id:'z1', type:'char', types:['char'], name:'복원', desc:'', x:1000, y:1000});");
+    seeded.E("setEditMode(true); commit(); renderAll(); openPanel('list');");
+    await wait(60);
+    const sec = [...seeded.doc.querySelectorAll("#tocBody .toc-sec")]
+      .find(e => e.querySelector(".toc-name").textContent === "인물");
+    T("23-3 인물 묶음이 접힌 채로 열린다",
+      sec !== undefined && sec.querySelector(".toc-cav").textContent === "▸" &&
+      sec.querySelector(".toc-list") === null);
+    seeded.E("sel={nodeIds:['z1'], edgeId:null}; openNodePanel();");
+    await wait(60);
+    T("23-4 저장해 둔 높이로 칸이 열린다",
+      seeded.doc.getElementById("npDesc").style.height === "188px" &&
+      seeded.doc.getElementById("npMemo").style.height === "266px");
+    seeded.win.close();
+  }
+
+  /* ---- 24. 노드 카드 · 탭 주소 ---- */
+  {
+    E("clearSel(); closePanel(); tabs.length=1; tabs[0].nodes.length=0; tabs[0].edges.length=0;");
+    E("activeTabId = tabs[0].id; tabs[0].title = '첫 세계';");
+    E("tabs[0].nodes.push({id:'p1', type:'char', types:['char'], name:'그림 있는 노드'," +
+      "desc:'', tags:['기사단'], imgs:[{id:'im1',w:10,h:10,cap:''},{id:'im2',w:10,h:10,cap:''}]," +
+      "x:1000, y:1000});");
+    E("setEditMode(true); commit(); renderAll();");
+    await wait(40);
+
+    const card = doc.querySelector('.node[data-id="p1"]');
+    T("24-1 노드 카드가 그려진다", card !== null);
+    T("24-2 이미지 개수 배지가 없다", !card.textContent.includes("🖼"));
+    T("24-3 개수 숫자도 남지 않는다",
+      [...card.querySelectorAll(".nh .nt")].every(e => !/^\s*\d+\s*$/.test(e.textContent)));
+    T("24-4 타입·소속 꼬리표는 그대로",
+      [...card.querySelectorAll(".nh .nt")].map(e => e.textContent.trim()).join(",") === "인물,기사단");
+
+    /* 탭 주소 — 순번을 쓴다 */
+    E("addTab(); addTab();"); await wait(50);
+    T("24-5 탭이 셋", E("tabs.length") === 3);
+    T("24-6 주소가 지금 탭의 순번", w.location.hash === "#3", w.location.hash);
+    E("switchTab(tabs[0].id)"); await wait(40);
+    T("24-7 탭을 옮기면 주소도 따라온다", w.location.hash === "#1", w.location.hash);
+    T("24-8 마지막으로 본 탭을 기억한다",
+      E("localStorage.getItem('wm_lasttab')") === E("tabs[0].id"));
+
+    /* 주소를 직접 바꾸면 그 탭으로 */
+    T("24-9 순번으로 찾는다", E("hashTarget.call(null)") !== undefined);
+    T("24-10 #2 는 두 번째 탭", E("(function(){ location.hash = '#2'; return hashTarget(); })()") === E("tabs[1].id"));
+    T("24-11 탭 id 로도 찾는다",
+      E("(function(){ location.hash = '#' + tabs[2].id; return hashTarget(); })()") === E("tabs[2].id"));
+    T("24-12 탭 이름으로도 찾는다",
+      E("(function(){ location.hash = '#' + encodeURIComponent('첫 세계'); return hashTarget(); })()") === E("tabs[0].id"));
+    T("24-13 모르는 주소는 빈 값",
+      E("(function(){ location.hash = '#없는탭'; return hashTarget(); })()") === "");
+    T("24-14 범위 밖 순번도 빈 값",
+      E("(function(){ location.hash = '#99'; return hashTarget(); })()") === "");
+    E("location.hash = ''; switchTab(tabs[0].id); syncTabLocation();");
+    await wait(30);
+  }
+
+  /* ---- 25. 새로 켜면 지난번 탭이 먼저 열린다 ---- */
+  {
+    /* 지난번에 보던 탭 */
+    const back = boot({deploy:{apiBase:''}, pre: win => {
+      win.localStorage.setItem("wm_tabs", JSON.stringify({tabs:[
+        {id:"t1", title:"하나", nodes:[], edges:[], events:[], worldPrompt:""},
+        {id:"t2", title:"둘",   nodes:[], edges:[], events:[], worldPrompt:""},
+        {id:"t3", title:"셋",   nodes:[], edges:[], events:[], worldPrompt:""}]}));
+      win.localStorage.setItem("wm_lasttab", "t3");
+    }});
+    await wait(400);
+    T("25-1 마지막으로 보던 탭이 열린다", back.E("activeTabId") === "t3");
+    T("25-2 주소도 그 탭을 가리킨다", back.win.location.hash === "#3", back.win.location.hash);
+    back.win.close();
+
+    /* 주소가 있으면 주소가 이긴다 */
+    const byUrl = boot({url:'https://localhost/#2', deploy:{apiBase:''}, pre: win => {
+      win.localStorage.setItem("wm_tabs", JSON.stringify({tabs:[
+        {id:"t1", title:"하나", nodes:[], edges:[], events:[], worldPrompt:""},
+        {id:"t2", title:"둘",   nodes:[], edges:[], events:[], worldPrompt:""},
+        {id:"t3", title:"셋",   nodes:[], edges:[], events:[], worldPrompt:""}]}));
+      win.localStorage.setItem("wm_lasttab", "t3");
+    }});
+    await wait(400);
+    T("25-3 주소가 지난번 탭보다 우선", byUrl.E("activeTabId") === "t2");
+    byUrl.win.close();
+
+    /* 없는 탭을 가리키면 첫 탭으로 */
+    const gone = boot({deploy:{apiBase:''}, pre: win => {
+      win.localStorage.setItem("wm_tabs", JSON.stringify({tabs:[
+        {id:"t1", title:"하나", nodes:[], edges:[], events:[], worldPrompt:""}]}));
+      win.localStorage.setItem("wm_lasttab", "지워진탭");
+    }});
+    await wait(400);
+    T("25-4 지워진 탭을 가리키면 첫 탭으로", gone.E("activeTabId") === "t1");
+    gone.win.close();
   }
 
   done();

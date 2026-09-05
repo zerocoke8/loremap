@@ -28,7 +28,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 
 - **데이터 스키마**: Tab{id,title,nodes,edges,events,worldPrompt,nodeTypes,refImages}, Node{id,type,name,desc,x,y}, Edge{id,from,to,label,desc,isParent}, Event{id,time,body,order}. `gid()`='i'+카운터. 런타임 전용 필드는 `_exp`, `_aiPreview`, `_chat`이며 절대 저장하지 않는다(`cleanTab` 화이트리스트).
 - **노드 타입은 탭 데이터**다(`Tab.nodeTypes = [{key,label,fields[]}]` — `fields` 는 그 타입 노드에 기본으로 깔아줄 속성 이름들, 배열 순서 = 상하위 단계, 색은 순서대로 자동 배정, 이모지 없음). 옛 상수 `TL/TI/TC/TYPES`는 없어졌고 `DEFAULT_TYPES`/`typeList/typeLabel/typeColors/typeKeyOr`가 대신한다. **`key`는 `node.type`에 저장되는 값이라 절대 바꾸지 않는다**(label만 변경). 기본 7종의 key(world…custom)는 기존 사용자 데이터 호환을 위해 유지한다.
-- **localStorage 키**: `wm_tabs` = `JSON.stringify({tabs})` 형식 고정. `wm_fbcfg`(수동 Firebase 설정), `wm_theme`, `wm_edgecolor`, `wm_edgeshape`. 옛 키 `wm_k/wm_gk/wm_mh`는 더 이상 쓰지 않지만 지우지도 않는다.
+- **localStorage 키**: `wm_tabs` = `JSON.stringify({tabs})` 형식 고정. `wm_fbcfg`(수동 Firebase 설정), `wm_theme`, `wm_edgecolor`, `wm_edgeshape`, `wm_toc`(접어둔 목차 타입 key 배열), `wm_npsize`(설명·메모 칸 높이 `{desc,memo}`), `wm_lasttab`(마지막으로 보던 탭 id). 옛 키 `wm_k/wm_gk/wm_mh`는 더 이상 쓰지 않지만 지우지도 않는다. **화면 취향(테마·목차·칸 높이)만 넣는다 — 세계관 데이터는 `wm_tabs` 하나뿐이다.**
 - **Firebase 경로**: `worldmind/tabList[{id,title}]`, `worldmind/tabs/{tabId}/{meta{title,worldPrompt,_w}, nodes/{id}, edges/{id}, events/{id}}`. 모든 항목에 `_w`=세션 ID(`FB_SID`). 구 포맷 `worldmind/{tabs:[…]}`는 `migrateIfOld`가 자동 이전한다.
 - `sanitizeTab`은 모든 로드 경로가 통과해야 한다.
 
@@ -50,14 +50,15 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§5-16 노드 가져오기` | `openImportModal`/`runImport`/`applyImportResult`. `parseDrawio`(mxCell 파싱+압축 해제), `layoutImported`+`freeOrigin`(추가분만 배치 — 기존 좌표 불변) |
 | `§1 노드 스키마` | `nodeTypes(n)`(겸하는 타입 목록) · `nodeTypeLabels` · `typeFields`(타입별 기본 속성) · `propGet`. ⚠ `node.type` 은 `sanitizeTab` 이 항상 `types[0]` 과 동기화하므로 둘을 따로 쓰면 안 된다 |
 | `§5-17 노드 이미지` | `shrinkImage`(긴 변 1600·JPEG 0.82) → `uploadImage` → Worker `/api/img` → R2. 노드에는 `{id,w,h,cap}` 만 남는다. `cleanupImages` 가 참조 없는 객체를 정리 |
-| `§5-16 노드 상세 패널` | `renderNodePanel`/`panelNode`/`openNodePanel`. 위 칸=이미지·이름·타입·속성·설명, 아래 칸=메모(노드별). 노드 클릭은 펼침과 패널을 **함께** 연다. 설명·메모는 `autoText`가 붙은 자동 저장 칸 — 입력이 `TEXT_SAVE_MS`(800ms) 멈추면 `commit()` 한 번, blur·`beforeunload`에서는 `flushPendingText()`로 즉시. 그 커밋 하나가 되돌리기 한 단계다 |
+| `§5-16 노드 상세 패널` | `renderNodePanel`/`panelNode`/`openNodePanel`. 위 칸=이미지·이름·타입·속성·설명, 아래 칸=메모(노드별, 머리글 없음 — 안내는 placeholder). 두 칸의 사용자 조절 높이는 `npSize`→`wm_npsize`(`applyNpSize`/`rememberNpSize`, 노드별이 아니라 브라우저별). 노드 클릭은 펼침과 패널을 **함께** 연다. 설명·메모는 `autoText`가 붙은 자동 저장 칸 — 입력이 `TEXT_SAVE_MS`(800ms) 멈추면 `commit()` 한 번, blur·`beforeunload`에서는 `flushPendingText()`로 즉시. 그 커밋 하나가 되돌리기 한 단계다 |
 | 노드 겹침 | `topNodeId`(런타임 전용, 마지막으로 건드린 카드) → `.node.top` z-index 6. 펼침·선택·최상단은 타입 색조를 불투명 바탕 위에 얹어 뒤를 가린다 |
-| `§5-18 노드 목차` | `renderTocPanel`(`tocSig` 로 내용이 같으면 DOM 을 건드리지 않는다)/`gotoNode`/`markTocCurrent`/`toggleTocSection`. 주 타입 기준으로 한 번만 나열해 중복을 막는다. 한 번 클릭=이동, 두 번=상세까지(`TOC_DBL_MS` 수동 감지), 타입 이름 클릭=접기(`tocClosed`, 세션 한정) |
+| `§5-18 노드 목차` | `renderTocPanel`(`tocSig` 로 내용이 같으면 DOM 을 건드리지 않는다)/`gotoNode`/`markTocCurrent`/`toggleTocSection`. 주 타입 기준으로 한 번만 나열해 중복을 막는다. 한 번 클릭=이동, 두 번=상세까지(`TOC_DBL_MS` 수동 감지), 타입 이름 클릭=접기(`tocClosed` → `wm_toc`, 탭 구분 없이 브라우저에 남는다) |
 | `§5-14 노드 검색` | `runSearch`/`stepSearch`/`centerOnNode`. `searchHits`+`searchIdx`+`searchQuery`(재검색·순회 구분). 강조는 `renderNodes` 가 `.found`/`.cur` 클래스로 |
 | `§5-15 선택 영역 복사` | `copySelection`/`pasteClip`(내부 버퍼 `clipBuf`), `copySelectionImage`(캔버스에 직접 그려 투명 PNG). 연결선은 화면 SVG 의 `d`(M x y Q …)를 그대로 재현한다 |
 | `§5-4 노드 자동 정렬` | `computeRadialLayout`, `tweenTo` |
 | `§6 AI 호출 헬퍼` | `callClaude/callGemini` → 모두 `apiPost`로 Worker 경유 |
 | `§5-9 AI 노드 생성` / `§5-10 AI 추천` / `§5-8 주인공 방문` | AI 기능. 프롬프트는 `buildCtx/worldSystem` 재사용 |
+| `§5-1b 탭 주소` | `hashTarget`/`syncTabLocation`(`renderTabs` 가 매번 호출). 주소 `#2` = 두 번째 탭. GitHub Pages 는 정적이라 `/loremap/2` 경로는 404 가 되므로 `#` 뒤에 붙인다. 읽을 때는 순번·탭 id·탭 이름 셋 다 받고, 쓸 때는 순번을 쓴다. 첫 탭 결정 순서 = 주소 > `wm_lasttab` > 첫 탭 |
 | `§5-1 탭 관리` / `§5-11 편집 모드` / `테마` / `§5-13 설정` / `정적 UI 바인딩` / `main()` | 앱 셸 |
 
 ## 동작 원리 요약
@@ -76,6 +77,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - 목차는 `renderAll()`이 끌고 간다(`rpCur === 'list'`일 때). `commit()`은 패널을 갱신하지 않으므로, 여기서 빼면 이름 변경·삭제 뒤 목차에 유령 항목이 남는다.
 - **`rows=N` textarea 에 `scrollHeight` 기반 자동 높이를 붙이지 말 것.** `height:'auto'`면 textarea 는 `rows` 크기로 돌아가고 `scrollHeight ≥ clientHeight`라 그 아래로 줄지 않는다(`min-height:0`도 무력). 게다가 한 번 잰 px 를 `overflow:hidden`과 함께 고정하면 나중에 스크롤바가 생겨 폭이 줄 때 마지막 줄이 잘리고, 편집 모드에서 `style.height=''`로 되돌리면 사용자가 드래그로 늘린 높이를 지운다. 노드 설명은 **보기용 `#npDescView`(div) + 편집용 `#npDesc`(textarea)** 로 나눠 높이를 아예 계산하지 않는다.
 - `.eo`는 `display:none`이라 **편집 모드에서만 보여야 하는 것에만** 붙인다. 보기 전용 방문자도 읽어야 하는 칸(노드 설명 등)에 붙이면 통째로 사라진다. 읽기 전용 표시는 `readOnly`로 하고 `.eo`는 붙이지 않는다.
+- **`resize` 손잡이 드래그의 끝은 `mouseup` 이 그 요소에 오지 않는다.** 브라우저는 리사이즈 중 포인터를 묶어두지 않아서, `resize:vertical` 인 칸은 가로로 4px 만 흘러도 `mouseup` 이 부모에 떨어진다(실제 Chrome 확인). textarea 에 직접 걸지 말고 `window` 에서 받을 것(`rememberNpSize`). jsdom 테스트가 `mouseup` 을 요소에 직접 쏘면 이 누수를 못 잡는다 — 바깥 요소에 쏴서 검증할 것.
 - 패널 헤더 `.rp-h`는 모든 패널이 공유한다. 거기 둔 버튼(`#npEdit`)은 `openPanel`·`closePanel`·`renderNodePanel` 세 곳에서 `hidden`을 맞춘다. `renderNodePanel`은 `await uploadImage()` 뒤처럼 **패널이 이미 바뀐 뒤에도 불리므로** `rpCur !== 'node'`를 직접 확인해야 한다. 헤더에 `#id` 로 색을 주면 `.rp-h button:hover`(특이도 0,2,1)를 이겨 버리니 `:hover`도 같이 정의할 것.
 - 연결선은 노드 테두리에서 절단된다(`trimQuad`, 이분 탐색). 노드 크기·위치를 바꾸는 코드는 `renderEdges()` 또는 `updateEdgesFor()`를 다시 불러야 절단이 맞는다.
 - AI 사건 생성은 노드 선택 모드(`evPick`, `#pickBanner`)로 동작한다. 선택 모드 중 노드 클릭은 펼침이 아니라 선택 토글이다.
