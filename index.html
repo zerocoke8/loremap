@@ -710,7 +710,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
       <div id="npBody" hidden>
         <div id="npImgs" class="np-imgs" hidden></div>
         <div class="btnrow eo"><button class="btn" id="npImgAdd">🖼 이미지 추가</button></div>
-        <div class="hint eo">붙여넣기(Ctrl+V)나 끌어다 놓기로도 넣을 수 있습니다 — 노드 위에 바로 놓아도 됩니다.</div>
+        <div class="hint eo">붙여넣기(Ctrl+V)나 이 패널에 끌어다 놓기로도 넣을 수 있습니다.</div>
         <div class="hint" id="npImgHint" hidden></div>
         <div class="rp-sec">노드</div>
         <div id="npHead"></div>
@@ -4022,10 +4022,11 @@ function imageFilesFrom(dt){
 function hasFiles(dt){
   return !!dt && Array.from(dt.types || []).includes('Files');
 }
-/* 떨어뜨릴 자리: 노드 카드가 우선, 없으면 노드 상세 패널 */
+/* 떨어뜨릴 자리는 노드 상세 패널 하나뿐.
+   캔버스의 노드 카드 위에 놓게 하면 옆 노드에 잘못 붙기 쉬워서 받지 않는다. */
 function dropTargetEl(el){
   if(!el || !el.closest) return null;
-  return el.closest('.node') || (el.closest('#rpNode') ? $('#rpNode') : null);
+  return el.closest('#rpNode') ? $('#rpNode') : null;
 }
 let dropEl = null;
 function setDropHint(el){
@@ -5354,7 +5355,7 @@ function bindStaticUI(){
     addImagesToNode(imgs);
   });
 
-  /* 끌어놓기 — 노드 카드 위에 놓으면 그 노드로, 노드 상세 위에 놓으면 열려 있는 노드로.
+  /* 끌어놓기 — 노드 상세 위에 놓으면 열려 있는 노드로 들어간다.
      그 밖에서는 막기만 한다. 안 막으면 브라우저가 떨어뜨린 이미지 파일로 이동해 버린다. */
   document.addEventListener('dragover', e => {
     if(!hasFiles(e.dataTransfer)) return;
@@ -5371,16 +5372,8 @@ function bindStaticUI(){
     setDropHint(null);
     if(e.target?.closest?.('.ov')) return;         // 가져오기 창 몫
     e.preventDefault();
-    const el = dropTargetEl(e.target);
-    const card = el?.classList?.contains('node') ? el : null;
-    const n = card ? nodeById(curTab(), card.dataset.id) : panelNode();
-    if(card && n && !sel.nodeIds.includes(n.id)){
-      sel = {nodeIds:[n.id], edgeId:null};
-      topNodeId = n.id;
-      renderAll();
-      if(rpCur === 'node') renderNodePanel();      // 이미 열려 있으면 그 노드로 옮긴다
-    }
-    addImagesToNode(imageFilesFrom(e.dataTransfer), n);
+    if(!dropTargetEl(e.target)) return;           // 노드 상세 밖이면 막기만 하고 끝
+    addImagesToNode(imageFilesFrom(e.dataTransfer));
   });
   /* 메모는 자동 저장 — 타이핑이 멈추면 커밋한다 */
   /* 설명·메모 자동 저장

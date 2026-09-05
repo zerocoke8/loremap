@@ -1515,16 +1515,23 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T("26-4 이미지가 아닌 붙여넣기는 통과", pe3.defaultPrevented === false &&
       E("(nodeById(curTab(),'g1').imgs||[]).length") === 1);
 
-    /* 4) 노드 카드 위에 끌어다 놓으면 그 노드로 — 고른 노드가 아니어도 */
-    const card2 = doc.querySelector('.node[data-id="g2"]');
+    /* 4) 노드 상세 위에 놓으면 열려 있는 노드로 들어간다 */
     const de = new w.Event("drop", {bubbles:true, cancelable:true});
     de.dataTransfer = mkDT([mkFile("끌기.png", "image/png")]);
-    card2.dispatchEvent(de);
+    doc.getElementById("npBody").dispatchEvent(de);
     await wait(80);
-    T("26-5 놓은 노드에 들어간다", E("(nodeById(curTab(),'g2').imgs||[]).length") === 1);
-    T("26-6 고른 노드는 그대로 하나뿐", E("(nodeById(curTab(),'g1').imgs||[]).length") === 1);
-    T("26-7 놓은 노드가 선택된다", E("sel.nodeIds.join(',')") === "g2");
-    T("26-8 열린 상세도 그 노드로", doc.querySelector("#npHead .np-name").textContent === "옆 노드");
+    T("26-5 노드 상세에 놓으면 열린 노드로", E("(nodeById(curTab(),'g1').imgs||[]).length") === 2);
+    T("26-6 기본 동작을 막는다", de.defaultPrevented === true);
+
+    /* 카드 위에 놓는 건 받지 않는다 — 옆 노드에 잘못 붙기 쉽다 */
+    const card2 = doc.querySelector('.node[data-id="g2"]');
+    const de3 = new w.Event("drop", {bubbles:true, cancelable:true});
+    de3.dataTransfer = mkDT([mkFile("카드위.png", "image/png")]);
+    card2.dispatchEvent(de3);
+    await wait(80);
+    T("26-7 카드 위에 놓아도 붙지 않는다", E("(nodeById(curTab(),'g2').imgs||[]).length") === 0);
+    T("26-8 고른 노드에도 늘지 않는다", E("(nodeById(curTab(),'g1').imgs||[]).length") === 2);
+    T("26-8b 그래도 브라우저 이동은 막는다", de3.defaultPrevented === true);
 
     /* 5) 빈 캔버스에 놓아도 브라우저가 파일로 이동하지 않게 막는다 */
     const de2 = new w.Event("drop", {bubbles:true, cancelable:true});
@@ -1536,16 +1543,24 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     /* 6) 끌고 오는 동안 표시 */
     const ov = new w.Event("dragover", {bubbles:true, cancelable:true});
     ov.dataTransfer = mkDT([], ["Files"]);
-    doc.querySelector('.node[data-id="g1"]').dispatchEvent(ov);
+    doc.getElementById("npBody").dispatchEvent(ov);
     await wait(20);
-    T("26-10 끌고 오면 놓을 자리를 표시",
-      doc.querySelector('.node[data-id="g1"]').classList.contains("imp-drop"));
+    T("26-10 끌고 오면 노드 상세를 표시",
+      doc.getElementById("rpNode").classList.contains("imp-drop"));
     T("26-11 끌기 중엔 기본 동작을 막아 drop 이 오게 한다", ov.defaultPrevented === true);
+    const ov2 = new w.Event("dragover", {bubbles:true, cancelable:true});
+    ov2.dataTransfer = mkDT([], ["Files"]);
+    doc.querySelector('.node[data-id="g1"]').dispatchEvent(ov2);
+    await wait(20);
+    T("26-11b 카드 위에서는 표시하지 않는다",
+      !doc.querySelector('.node[data-id="g1"]').classList.contains("imp-drop") &&
+      !doc.getElementById("rpNode").classList.contains("imp-drop"));
+    doc.getElementById("npBody").dispatchEvent(new w.Event("dragover", {bubbles:true, cancelable:true}));
     const dl = new w.Event("dragleave", {bubbles:true, cancelable:true});
-    doc.querySelector('.node[data-id="g1"]').dispatchEvent(dl);
+    doc.getElementById("npBody").dispatchEvent(dl);
     await wait(20);
     T("26-12 나가면 표시를 지운다",
-      !doc.querySelector('.node[data-id="g1"]').classList.contains("imp-drop"));
+      !doc.getElementById("rpNode").classList.contains("imp-drop"));
 
     /* 7) 고른 노드가 없으면 알려 준다 */
     E("clearSel(); closePanel();");
@@ -1556,7 +1571,8 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     await wait(60);
     T("26-13 고른 노드가 없으면 안내", ([...doc.querySelectorAll(".toast")].map(e=>e.textContent).join(" | ") || "").includes("노드를 하나 고른"),
       [...doc.querySelectorAll(".toast")].map(e=>e.textContent).join(" | "));
-    T("26-14 올린 파일은 셋뿐(안내 뒤 업로드 없음)", E("window.__up.length") === 3, E("JSON.stringify(window.__up)"));
+    T("26-14 올린 파일은 둘뿐 — 카드 위와 노드 없음은 올라가지 않는다",
+      E("window.__up.length") === 2, E("JSON.stringify(window.__up)"));
   }
 
   done();
