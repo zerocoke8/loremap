@@ -710,6 +710,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
       <div id="npBody" hidden>
         <div id="npImgs" class="np-imgs" hidden></div>
         <div class="btnrow eo"><button class="btn" id="npImgAdd">🖼 이미지 추가</button></div>
+        <div class="hint eo">붙여넣기(Ctrl+V)나 끌어다 놓기로도 넣을 수 있습니다 — 노드 위에 바로 놓아도 됩니다.</div>
         <div class="hint" id="npImgHint" hidden></div>
         <div class="rp-sec">노드</div>
         <div id="npHead"></div>
@@ -4006,11 +4007,40 @@ async function uploadImage(file){
 }
 
 /* 패널에서 고른 파일들을 차례로 올려 현재 노드에 붙인다 */
-async function addImagesToNode(files){
+/* 끌어온·붙여넣은 것 중 이미지 파일만 고른다.
+   files 가 비는 브라우저(사파리 등)를 위해 items 도 훑는다. */
+function imageFilesFrom(dt){
+  if(!dt) return [];
+  const byFiles = Array.from(dt.files || []).filter(f => /^image\//.test(f.type));
+  if(byFiles.length) return byFiles;
+  return Array.from(dt.items || [])
+    .filter(it => it.kind === 'file' && /^image\//.test(it.type))
+    .map(it => it.getAsFile())
+    .filter(Boolean);
+}
+/* 끌고 오는 동안에는 파일 내용을 못 읽는다 — 파일이 실려 있는지만 본다 */
+function hasFiles(dt){
+  return !!dt && Array.from(dt.types || []).includes('Files');
+}
+/* 떨어뜨릴 자리: 노드 카드가 우선, 없으면 노드 상세 패널 */
+function dropTargetEl(el){
+  if(!el || !el.closest) return null;
+  return el.closest('.node') || (el.closest('#rpNode') ? $('#rpNode') : null);
+}
+let dropEl = null;
+function setDropHint(el){
+  if(dropEl === el) return;
+  if(dropEl) dropEl.classList.remove('imp-drop');
+  dropEl = el;
+  if(dropEl) dropEl.classList.add('imp-drop');
+}
+
+async function addImagesToNode(files, node){
   if(!reqEdit()) return;
-  const n = panelNode(); if(!n) return;
+  const n = node || panelNode();
+  if(!n){ toast('노드를 하나 고른 뒤에 이미지를 넣을 수 있습니다', true); return; }
   const list = Array.from(files || []).filter(f => /^image\//.test(f.type));
-  if(!list.length) return;
+  if(!list.length){ toast('이미지 파일만 넣을 수 있습니다', true); return; }
   const hint = $('#npImgHint');
   let done = 0, failed = 0;
   for(const f of list){
@@ -4021,7 +4051,8 @@ async function addImagesToNode(files){
       if(!nodeById(curTab(), n.id)) return;          // 올리는 사이 노드가 사라졌다
       n.imgs = [...(n.imgs || []), im];
       done++;
-      commit(); renderNodePanel(); renderAll();
+      commit(); renderAll();
+      if(panelNode()?.id === n.id) renderNodePanel();
     }catch(err){
       failed++;
       console.error('이미지 업로드 실패', err);
@@ -5309,15 +5340,47 @@ function bindStaticUI(){
     const i = +inp.dataset.i;
     if(n.imgs[i]){ n.imgs[i].cap = inp.value.slice(0, 120); commit(); }
   });
-  /* 패널에 이미지를 끌어다 놓거나 붙여넣어도 추가된다 */
-  ['dragover','dragenter'].forEach(ev => $('#rpNode').addEventListener(ev, e => { e.preventDefault(); }));
-  $('#rpNode').addEventListener('drop', e => {
+  /* 이미지 붙여넣기 — 문서 전체에서 받는다.
+     paste 는 포커스된 요소에서 나므로 #rpNode 에만 걸면, 캔버스에서 노드를 고른 직후
+     Ctrl+V 했을 때(포커스가 body) 이벤트가 패널까지 오지 않는다. */
+  document.addEventListener('paste', e => {
+    const imgs = imageFilesFrom(e.clipboardData);
+    if(!imgs.length) return;                       // 글 붙여넣기는 건드리지 않는다
+    const ae = document.activeElement;
+    const typing = ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.isContentEditable);
+    const text = (e.clipboardData?.getData('text/plain') || '').trim();
+    if(typing && text) return;                     // 글도 함께 있으면 글이 우선
     e.preventDefault();
-    if(e.dataTransfer?.files?.length) addImagesToNode(e.dataTransfer.files);
+    addImagesToNode(imgs);
   });
-  $('#rpNode').addEventListener('paste', e => {
-    const fs2 = Array.from(e.clipboardData?.files || []);
-    if(fs2.length){ e.preventDefault(); addImagesToNode(fs2); }
+
+  /* 끌어놓기 — 노드 카드 위에 놓으면 그 노드로, 노드 상세 위에 놓으면 열려 있는 노드로.
+     그 밖에서는 막기만 한다. 안 막으면 브라우저가 떨어뜨린 이미지 파일로 이동해 버린다. */
+  document.addEventListener('dragover', e => {
+    if(!hasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    if(e.target?.closest?.('.ov')) return;         // 가져오기 창은 스스로 처리한다
+    setDropHint(dropTargetEl(e.target));
+  });
+  ['dragleave','dragend'].forEach(ev => document.addEventListener(ev, e => {
+    if(e.type === 'dragleave' && e.relatedTarget) return;   // 아직 창 안이다
+    setDropHint(null);
+  }));
+  document.addEventListener('drop', e => {
+    if(!hasFiles(e.dataTransfer)) return;
+    setDropHint(null);
+    if(e.target?.closest?.('.ov')) return;         // 가져오기 창 몫
+    e.preventDefault();
+    const el = dropTargetEl(e.target);
+    const card = el?.classList?.contains('node') ? el : null;
+    const n = card ? nodeById(curTab(), card.dataset.id) : panelNode();
+    if(card && n && !sel.nodeIds.includes(n.id)){
+      sel = {nodeIds:[n.id], edgeId:null};
+      topNodeId = n.id;
+      renderAll();
+      if(rpCur === 'node') renderNodePanel();      // 이미 열려 있으면 그 노드로 옮긴다
+    }
+    addImagesToNode(imageFilesFrom(e.dataTransfer), n);
   });
   /* 메모는 자동 저장 — 타이핑이 멈추면 커밋한다 */
   /* 설명·메모 자동 저장

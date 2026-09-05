@@ -49,7 +49,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§5-14 노드 타입 관리` | `openTypeManager`(탭별 타입 추가·이름변경·순서·삭제). 삭제된 타입의 노드는 최하위 타입으로 이동 |
 | `§5-16 노드 가져오기` | `openImportModal`/`runImport`/`applyImportResult`. `parseDrawio`(mxCell 파싱+압축 해제), `layoutImported`+`freeOrigin`(추가분만 배치 — 기존 좌표 불변) |
 | `§1 노드 스키마` | `nodeTypes(n)`(겸하는 타입 목록) · `nodeTypeLabels` · `typeFields`(타입별 기본 속성) · `propGet`. ⚠ `node.type` 은 `sanitizeTab` 이 항상 `types[0]` 과 동기화하므로 둘을 따로 쓰면 안 된다 |
-| `§5-17 노드 이미지` | `shrinkImage`(긴 변 1600·JPEG 0.82) → `uploadImage` → Worker `/api/img` → R2. 노드에는 `{id,w,h,cap}` 만 남는다. `cleanupImages` 가 참조 없는 객체를 정리 |
+| `§5-17 노드 이미지` | `shrinkImage`(긴 변 1600·JPEG 0.82) → `uploadImage` → Worker `/api/img` → R2. 노드에는 `{id,w,h,cap}` 만 남는다. `cleanupImages` 가 참조 없는 객체를 정리. 넣는 길은 셋 — 🖼 버튼(`#npImgFile`), Ctrl+V(`document` paste), 끌어놓기(`document` drop → `dropTargetEl` 이 노드 카드 > 노드 상세 순으로 고른다). 공통 진입점은 `addImagesToNode(files, node)` |
 | `§5-16 노드 상세 패널` | `renderNodePanel`/`panelNode`/`openNodePanel`. 위 칸=이미지·이름·타입·속성·설명, 아래 칸=메모(노드별, 머리글 없음 — 안내는 placeholder). 두 칸의 사용자 조절 높이는 `npSize`→`wm_npsize`(`applyNpSize`/`rememberNpSize`, 노드별이 아니라 브라우저별). 노드 클릭은 펼침과 패널을 **함께** 연다. 설명·메모는 `autoText`가 붙은 자동 저장 칸 — 입력이 `TEXT_SAVE_MS`(800ms) 멈추면 `commit()` 한 번, blur·`beforeunload`에서는 `flushPendingText()`로 즉시. 그 커밋 하나가 되돌리기 한 단계다 |
 | 노드 겹침 | `topNodeId`(런타임 전용, 마지막으로 건드린 카드) → `.node.top` z-index 6. 펼침·선택·최상단은 타입 색조를 불투명 바탕 위에 얹어 뒤를 가린다 |
 | `§5-18 노드 목차` | `renderTocPanel`(`tocSig` 로 내용이 같으면 DOM 을 건드리지 않는다)/`gotoNode`/`markTocCurrent`/`toggleTocSection`. 주 타입 기준으로 한 번만 나열해 중복을 막는다. 한 번 클릭=이동, 두 번=상세까지(`TOC_DBL_MS` 수동 감지), 타입 이름 클릭=접기(`tocClosed` → `wm_toc`, 탭 구분 없이 브라우저에 남는다) |
@@ -77,6 +77,8 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - 목차는 `renderAll()`이 끌고 간다(`rpCur === 'list'`일 때). `commit()`은 패널을 갱신하지 않으므로, 여기서 빼면 이름 변경·삭제 뒤 목차에 유령 항목이 남는다.
 - **`rows=N` textarea 에 `scrollHeight` 기반 자동 높이를 붙이지 말 것.** `height:'auto'`면 textarea 는 `rows` 크기로 돌아가고 `scrollHeight ≥ clientHeight`라 그 아래로 줄지 않는다(`min-height:0`도 무력). 게다가 한 번 잰 px 를 `overflow:hidden`과 함께 고정하면 나중에 스크롤바가 생겨 폭이 줄 때 마지막 줄이 잘리고, 편집 모드에서 `style.height=''`로 되돌리면 사용자가 드래그로 늘린 높이를 지운다. 노드 설명은 **보기용 `#npDescView`(div) + 편집용 `#npDesc`(textarea)** 로 나눠 높이를 아예 계산하지 않는다.
 - `.eo`는 `display:none`이라 **편집 모드에서만 보여야 하는 것에만** 붙인다. 보기 전용 방문자도 읽어야 하는 칸(노드 설명 등)에 붙이면 통째로 사라진다. 읽기 전용 표시는 `readOnly`로 하고 `.eo`는 붙이지 않는다.
+- **`paste` 는 포커스된 요소에서 난다.** 패널에만 걸면 캔버스에서 노드를 고른 직후 Ctrl+V 했을 때(포커스가 `body`) 이벤트가 오지 않는다 — `document` 에서 받을 것. 대신 입력칸에 포커스가 있고 클립보드에 글도 함께 있으면 손대지 말 것(글 붙여넣기가 우선).
+- **파일을 끌어놓을 때 `dragover` 에서 `preventDefault` 를 안 하면 `drop` 이 오지 않고, `drop` 에서 안 하면 브라우저가 그 파일로 이동해 앱이 사라진다.** 그래서 `document` 에서 둘 다 막는다. 단 가져오기 창(`.ov`)은 자기 핸들러가 있으니 건너뛴다.
 - **`rememberNpSize` 는 저장값을 지우면 안 된다.** `ResizeObserver.observe()` 는 붙는 즉시 한 번 발화하고 창 `mouseup` 은 아무 데서나 오므로, 두 칸이 아직 안 그려져 인라인 높이가 빈 순간에 불린다. 그때 `next` 를 `{}` 에서 시작하면 `wm_npsize` 를 통째로 날려 **새로고침마다 높이가 사라진다**. 반드시 `{...npSize}` 에서 시작해 덮어쓰기만 할 것.
 - **`resize` 손잡이 드래그의 끝은 `mouseup` 이 그 요소에 오지 않는다.** 브라우저는 리사이즈 중 포인터를 묶어두지 않아서, `resize:vertical` 인 칸은 가로로 4px 만 흘러도 `mouseup` 이 부모에 떨어진다(실제 Chrome 확인). textarea 에 직접 걸지 말고 `window` 에서 받을 것(`rememberNpSize`). jsdom 테스트가 `mouseup` 을 요소에 직접 쏘면 이 누수를 못 잡는다 — 바깥 요소에 쏴서 검증할 것.
 - 패널 헤더 `.rp-h`는 모든 패널이 공유한다. 거기 둔 버튼(`#npEdit`)은 `openPanel`·`closePanel`·`renderNodePanel` 세 곳에서 `hidden`을 맞춘다. `renderNodePanel`은 `await uploadImage()` 뒤처럼 **패널이 이미 바뀐 뒤에도 불리므로** `rpCur !== 'node'`를 직접 확인해야 한다. 헤더에 `#id` 로 색을 주면 `.rp-h button:hover`(특이도 0,2,1)를 이겨 버리니 `:hover`도 같이 정의할 것.

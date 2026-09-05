@@ -1461,5 +1461,103 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     gone.win.close();
   }
 
+  /* ---- 26. 이미지 붙여넣기 · 끌어다 놓기 ---- */
+  {
+    E("clearSel(); closePanel(); tabs.length=1; tabs[0].nodes.length=0; tabs[0].edges.length=0;");
+    E("activeTabId = tabs[0].id;");
+    E("tabs[0].nodes.push(" +
+      "{id:'g1', type:'char', types:['char'], name:'받는 노드', desc:'', x:1000, y:1000}," +
+      "{id:'g2', type:'char', types:['char'], name:'옆 노드',   desc:'', x:1600, y:1000});");
+    E("setEditMode(true); commit(); renderAll();");
+    await wait(40);
+
+    /* 업로드는 서버로 가니 가로챈다 — 어디로 붙는지만 본다 */
+    E("window.__up = []; uploadImage = async f => { window.__up.push(f.name); " +
+      "return {id:'up' + window.__up.length, w:10, h:10, cap:''}; };");
+
+    const mkFile = (name, type) => {
+      const f = new w.File(["x"], name, {type});
+      return f;
+    };
+    const mkDT = (files, types) => ({
+      files, items: [], types: types || (files.length ? ["Files"] : []),
+      getData: () => ""
+    });
+
+    /* 1) Ctrl+V — 포커스가 body 여도 받아야 한다 (예전엔 #rpNode 에만 걸려 있었다) */
+    E("sel={nodeIds:['g1'], edgeId:null}; openNodePanel();");
+    await wait(40);
+    doc.body.focus();
+    const pe = new w.Event("paste", {bubbles:true, cancelable:true});
+    pe.clipboardData = mkDT([mkFile("붙여넣기.png", "image/png")]);
+    doc.body.dispatchEvent(pe);
+    await wait(80);
+    T("26-1 캔버스에 포커스가 있어도 붙여넣기가 먹는다",
+      E("(nodeById(curTab(),'g1').imgs||[]).length") === 1);
+    T("26-2 기본 동작을 막는다", pe.defaultPrevented === true);
+
+    /* 2) 글이 함께 있고 입력칸에 있으면 글이 우선 */
+    doc.getElementById("npMemo").focus();
+    const pe2 = new w.Event("paste", {bubbles:true, cancelable:true});
+    pe2.clipboardData = {files:[mkFile("같이.png","image/png")], items:[], types:["Files","text/plain"],
+      getData: t => t === "text/plain" ? "붙여넣을 글" : ""};
+    doc.getElementById("npMemo").dispatchEvent(pe2);
+    await wait(60);
+    T("26-3 입력칸에서 글이 함께면 글이 우선", pe2.defaultPrevented === false &&
+      E("(nodeById(curTab(),'g1').imgs||[]).length") === 1);
+    doc.getElementById("npMemo").blur();
+
+    /* 3) 이미지가 아니면 건드리지 않는다 */
+    const pe3 = new w.Event("paste", {bubbles:true, cancelable:true});
+    pe3.clipboardData = mkDT([mkFile("메모.txt","text/plain")], ["Files"]);
+    doc.body.dispatchEvent(pe3);
+    await wait(60);
+    T("26-4 이미지가 아닌 붙여넣기는 통과", pe3.defaultPrevented === false &&
+      E("(nodeById(curTab(),'g1').imgs||[]).length") === 1);
+
+    /* 4) 노드 카드 위에 끌어다 놓으면 그 노드로 — 고른 노드가 아니어도 */
+    const card2 = doc.querySelector('.node[data-id="g2"]');
+    const de = new w.Event("drop", {bubbles:true, cancelable:true});
+    de.dataTransfer = mkDT([mkFile("끌기.png", "image/png")]);
+    card2.dispatchEvent(de);
+    await wait(80);
+    T("26-5 놓은 노드에 들어간다", E("(nodeById(curTab(),'g2').imgs||[]).length") === 1);
+    T("26-6 고른 노드는 그대로 하나뿐", E("(nodeById(curTab(),'g1').imgs||[]).length") === 1);
+    T("26-7 놓은 노드가 선택된다", E("sel.nodeIds.join(',')") === "g2");
+    T("26-8 열린 상세도 그 노드로", doc.querySelector("#npHead .np-name").textContent === "옆 노드");
+
+    /* 5) 빈 캔버스에 놓아도 브라우저가 파일로 이동하지 않게 막는다 */
+    const de2 = new w.Event("drop", {bubbles:true, cancelable:true});
+    de2.dataTransfer = mkDT([mkFile("아무데나.png", "image/png")]);
+    doc.getElementById("cwrap").dispatchEvent(de2);
+    await wait(60);
+    T("26-9 빈 곳에 놓아도 기본 동작을 막는다", de2.defaultPrevented === true);
+
+    /* 6) 끌고 오는 동안 표시 */
+    const ov = new w.Event("dragover", {bubbles:true, cancelable:true});
+    ov.dataTransfer = mkDT([], ["Files"]);
+    doc.querySelector('.node[data-id="g1"]').dispatchEvent(ov);
+    await wait(20);
+    T("26-10 끌고 오면 놓을 자리를 표시",
+      doc.querySelector('.node[data-id="g1"]').classList.contains("imp-drop"));
+    T("26-11 끌기 중엔 기본 동작을 막아 drop 이 오게 한다", ov.defaultPrevented === true);
+    const dl = new w.Event("dragleave", {bubbles:true, cancelable:true});
+    doc.querySelector('.node[data-id="g1"]').dispatchEvent(dl);
+    await wait(20);
+    T("26-12 나가면 표시를 지운다",
+      !doc.querySelector('.node[data-id="g1"]').classList.contains("imp-drop"));
+
+    /* 7) 고른 노드가 없으면 알려 준다 */
+    E("clearSel(); closePanel();");
+    await wait(30);
+    const pe4 = new w.Event("paste", {bubbles:true, cancelable:true});
+    pe4.clipboardData = mkDT([mkFile("주인없음.png", "image/png")]);
+    doc.body.dispatchEvent(pe4);
+    await wait(60);
+    T("26-13 고른 노드가 없으면 안내", ([...doc.querySelectorAll(".toast")].map(e=>e.textContent).join(" | ") || "").includes("노드를 하나 고른"),
+      [...doc.querySelectorAll(".toast")].map(e=>e.textContent).join(" | "));
+    T("26-14 올린 파일은 셋뿐(안내 뒤 업로드 없음)", E("window.__up.length") === 3, E("JSON.stringify(window.__up)"));
+  }
+
   done();
 })();
