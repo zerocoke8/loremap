@@ -895,6 +895,10 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T("17-4 설명 입력칸에 기존 값", doc.querySelector("#npImgs .np-cap").value === "초상");
     T("17-5 첫 장은 위로 이동 불가", doc.querySelector('#npImgs [data-a="up"]').disabled === true);
     /* 카드의 이미지 개수 배지는 없앴다 — 노드 이름을 가리기만 했다 */
+    T("17-5b 작은 그림을 늘리지 않는다", (() => {
+      const st = w.getComputedStyle(doc.querySelector("#npImgs img"));
+      return st.maxWidth === "100%" && st.width !== "100%";
+    })(), w.getComputedStyle(doc.querySelector("#npImgs img")).width);
     T("17-6 카드에 개수 배지가 없다", [...doc.querySelectorAll('[data-id="q1"] .nt')].every(e => !e.textContent.includes("🖼")));
 
     /* 순서 바꾸기 */
@@ -1295,32 +1299,54 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     E("renderNodePanel();"); await wait(30);
     T("22-7 다시 그리면 저장해 둔 높이로 돌아온다",
       dsc.style.height === "210px" && mem.style.height === "330px");
-    T("22-8 이상한 값은 style 로 들어가지 않는다", E("(function(){" +
+
+    /* 칸이 아직 안 그려진 상태에서 rememberNpSize 가 불려도 지워지면 안 된다.
+       ResizeObserver 는 observe() 하는 즉시 한 번 발화하고, 창 mouseup 도 아무 데서나 온다 —
+       예전에는 이때 next 를 {} 에서 시작해 저장값을 통째로 날렸다(새로고침하면 높이가 사라짐). */
+    dsc.style.height = ""; mem.style.height = "";
+    w.dispatchEvent(new w.MouseEvent("mouseup", {bubbles:true}));
+    await wait(20);
+    T("22-8 칸이 비어 있을 때 눌러도 저장값이 살아 있다", (() => {
+      const v = JSON.parse(E("localStorage.getItem('wm_npsize')") || "{}");
+      return v.desc === "210px" && v.memo === "330px";
+    })());
+    E("renderNodePanel();"); await wait(30);
+    T("22-9 그 뒤에도 높이가 되살아난다",
+      dsc.style.height === "210px" && mem.style.height === "330px");
+    /* 한쪽만 조절해도 다른 쪽 기억이 남는다 */
+    dsc.style.height = "150px";
+    doc.body.dispatchEvent(new w.MouseEvent("mouseup", {bubbles:true}));
+    await wait(20);
+    T("22-10 한쪽만 바꿔도 다른 쪽은 그대로", (() => {
+      const v = JSON.parse(E("localStorage.getItem('wm_npsize')") || "{}");
+      return v.desc === "150px" && v.memo === "330px";
+    })());
+    T("22-11 이상한 값은 style 로 들어가지 않는다", E("(function(){" +
       "localStorage.setItem('wm_npsize', JSON.stringify({desc:'100px;background:red', memo:'9999999px'}));" +
       "return NP_H.test('100px;background:red') === false && NP_H.test('9999999px') === false;})()"));
 
     /* 테마 선택 — 4개를 한 줄에 욱여넣지 않는다 */
     E("openSettings();"); await wait(50);
     const grid = doc.querySelector(".dlg-b .theme-grid");
-    T("22-9 테마는 격자로", grid !== null);
+    T("22-12 테마는 격자로", grid !== null);
     const opts = [...grid.querySelectorAll(".theme-opt")];
-    T("22-10 네 가지 그대로", opts.length === 4);
-    T("22-11 이름과 설명이 따로", opts.every(o => o.querySelector(".to-t b") && o.querySelector(".to-t i")));
-    T("22-12 이름은 짧게", opts.map(o => o.querySelector(".to-t b").textContent).join(",") ===
+    T("22-13 네 가지 그대로", opts.length === 4);
+    T("22-14 이름과 설명이 따로", opts.every(o => o.querySelector(".to-t b") && o.querySelector(".to-t i")));
+    T("22-15 이름은 짧게", opts.map(o => o.querySelector(".to-t b").textContent).join(",") ===
       "다크,라이트,세피아,슬레이트");
-    T("22-13 색 견본은 그대로", opts.every(o => o.querySelector(".sw")));
-    T("22-14 설명을 …로 자르지 않는다",
+    T("22-16 색 견본은 그대로", opts.every(o => o.querySelector(".sw")));
+    T("22-17 설명을 …로 자르지 않는다",
       w.getComputedStyle(opts[3].querySelector(".to-t i")).whiteSpace !== "nowrap");
-    T("22-15 값은 THEMES 와 일치",
+    T("22-18 값은 THEMES 와 일치",
       opts.map(o => o.querySelector("input").value).join(",") === E("THEMES.join(',')"));
     const slate = opts.find(o => o.querySelector("input").value === "slate").querySelector("input");
     slate.checked = true;
     slate.dispatchEvent(new w.Event("change", {bubbles:true}));
     await wait(30);
-    T("22-16 고르면 바로 미리보기", E("curTheme") === "slate");
+    T("22-19 고르면 바로 미리보기", E("curTheme") === "slate");
     E("[...modalsEl.querySelectorAll('.ov')].forEach(closeModal);");
     await wait(30);
-    T("22-17 취소하면 원래 테마로", E("curTheme") !== "slate");
+    T("22-20 취소하면 원래 테마로", E("curTheme") !== "slate");
     E("applyTheme('dark', false);");
   }
 
@@ -1347,6 +1373,11 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T("23-4 저장해 둔 높이로 칸이 열린다",
       seeded.doc.getElementById("npDesc").style.height === "188px" &&
       seeded.doc.getElementById("npMemo").style.height === "266px");
+    /* 앱을 켠 것만으로 저장값이 날아가지 않아야 한다 (이게 깨져서 새로고침마다 높이가 사라졌다) */
+    T("23-5 켜는 것만으로 저장값이 지워지지 않는다",
+      seeded.E("localStorage.getItem('wm_npsize')") ===
+      JSON.stringify({desc:"188px", memo:"266px"}),
+      seeded.E("localStorage.getItem('wm_npsize')"));
     seeded.win.close();
   }
 
