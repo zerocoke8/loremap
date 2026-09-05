@@ -1135,29 +1135,103 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     E("openPanel('list')");
     await wait(40);
     T("21-8 목차 열림", E("rpCur") === "list");
-    doc.querySelector('#tocBody [data-id="d2"]').dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    const el1 = doc.querySelector('#tocBody [data-id="d2"]');
+    el1.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
     await wait(40);
     T("21-9 한 번 클릭은 이동만(목차 유지)", E("sel.nodeIds.join(',')") === "d2" && E("rpCur") === "list");
-    doc.querySelector('#tocBody [data-id="d2"]').dispatchEvent(new w.MouseEvent("dblclick", {bubbles:true}));
+    /* 목록을 다시 그리면 두 번째 클릭이 사라진 요소에 떨어져 더블클릭이 죽는다 */
+    T("21-10 클릭해도 목차 DOM 이 그대로", doc.querySelector('#tocBody [data-id="d2"]') === el1);
+    T("21-11 강조는 제자리에서 갱신", el1.className.includes("cur") &&
+      !doc.querySelector('#tocBody [data-id="d1"]').className.includes("cur"));
+
+    /* 두 번 연속 클릭 = 더블클릭 (브라우저가 실제로 보내는 순서) */
+    await wait(450);                                   // 앞선 클릭과 묶이지 않게 창을 비운다
+    el1.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    el1.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
     await wait(50);
-    T("21-10 더블클릭이면 상세가 열림", E("rpCur") === "node" &&
+    T("21-12 두 번 연속 클릭이면 상세가 열림", E("rpCur") === "node" &&
       doc.querySelector("#npHead .np-name").textContent === "아르카디아");
 
+    /* 천천히 두 번 누른 것은 더블클릭이 아니다 */
+    E("openPanel('list')"); await wait(40);
+    const el2 = doc.querySelector('#tocBody [data-id="d1"]');
+    el2.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(450);
+    el2.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(40);
+    T("21-13 느리게 두 번은 목차에 머문다", E("rpCur") === "list");
+
     /* 목차 접기 */
-    E("openPanel('list')");
+    E("refreshOpenPanels();");
     await wait(40);
     const before2 = doc.querySelectorAll("#tocBody .toc-i").length;
-    T("21-11 접기 전 항목이 보임", before2 >= 2);
+    T("21-14 접기 전 항목이 보임", before2 >= 2);
     const head = [...doc.querySelectorAll("#tocBody .toc-h")].find(h => h.textContent.includes("인물"));
     head.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
     await wait(40);
-    T("21-12 타입 이름을 누르면 접힘", doc.querySelectorAll("#tocBody .toc-i").length < before2);
-    T("21-13 접힌 표시(▸)", [...doc.querySelectorAll("#tocBody .toc-cav")].some(e => e.textContent === "▸"));
-    T("21-14 다른 타입은 그대로", doc.querySelector('#tocBody [data-id="d2"]') !== null);
+    T("21-15 타입 이름을 누르면 접힘", doc.querySelectorAll("#tocBody .toc-i").length < before2);
+    T("21-16 접힌 표시(▸)", [...doc.querySelectorAll("#tocBody .toc-cav")].some(e => e.textContent === "▸"));
+    T("21-17 다른 타입은 그대로", doc.querySelector('#tocBody [data-id="d2"]') !== null);
     const head2 = [...doc.querySelectorAll("#tocBody .toc-h")].find(h => h.textContent.includes("인물"));
     head2.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
     await wait(40);
-    T("21-15 다시 누르면 펼쳐짐", doc.querySelectorAll("#tocBody .toc-i").length === before2);
+    T("21-18 다시 누르면 펼쳐짐", doc.querySelectorAll("#tocBody .toc-i").length === before2);
+    /* 보기 모드에서도 설명은 보여야 한다 (.eo 를 붙이면 통째로 사라진다) */
+    E("sel={nodeIds:['d1'], edgeId:null}; openNodePanel();");
+    await wait(40);
+    T("21-20 설명 칸에 eo 가 없다", !doc.getElementById("npDesc").classList.contains("eo"));
+    E("nodeById(curTab(),'d1').desc = '북쪽 성채의 기사'; renderNodePanel();");
+    await wait(30);
+    T("21-21 편집 모드에선 고칠 수 있는 칸이 보인다",
+      doc.getElementById("npDesc").hidden === false &&
+      doc.getElementById("npDescView").hidden === true);
+    E("setEditMode(false); renderNodePanel();"); await wait(30);
+    T("21-22 보기 모드에서도 설명 글이 보인다",
+      doc.getElementById("npDescView").hidden === false &&
+      doc.getElementById("npDescView").textContent === "북쪽 성채의 기사");
+    T("21-23 보기 모드에선 편집 칸을 숨긴다", doc.getElementById("npDesc").hidden === true);
+    /* 높이를 재서 맞추면 rows 아래로 줄지 않고, 스크롤바가 늦게 생기면 끝 줄이 잘린다 */
+    T("21-24 설명 높이를 인라인으로 고정하지 않는다",
+      doc.getElementById("npDesc").style.height === "");
+    E("nodeById(curTab(),'d1').desc = ''; renderNodePanel();"); await wait(30);
+    T("21-25 설명이 비면 안내 문구", doc.getElementById("npDescView").textContent === "설명이 없습니다.");
+    E("nodeById(curTab(),'d1').desc = '처음 설명'; setEditMode(true); renderNodePanel();");
+    await wait(30);
+
+    /* 편집 버튼이 패널 오른쪽 위(헤더)로 */
+    T("21-26 편집 버튼이 헤더 오른쪽에", doc.querySelector(".rp-h .rp-h-r #npEdit") !== null);
+    T("21-27 노드 상세에서는 보인다", doc.getElementById("npEdit").hidden === false);
+    E("openPanel('list')"); await wait(40);
+    T("21-28 다른 패널에서는 숨는다", doc.getElementById("npEdit").hidden === true);
+    E("clearSel(); openNodePanel();"); await wait(40);
+    T("21-29 고른 노드가 없으면 숨는다", doc.getElementById("npEdit").hidden === true);
+    E("sel={nodeIds:['d1'], edgeId:null}; renderNodePanel();"); await wait(30);
+    doc.getElementById("npEdit").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(40);
+    const dlg = [...doc.querySelectorAll(".ov .dlg-h span")].map(e => e.textContent);
+    T("21-30 편집 버튼이 노드 편집창을 연다", dlg.includes("노드 편집"), dlg);
+    E("[...modalsEl.querySelectorAll('.ov')].forEach(closeModal);");
+    await wait(30);
+
+    /* 이미지 업로드처럼 await 뒤에 renderNodePanel 이 다시 불릴 수 있다 —
+       그 사이 패널이 바뀌었으면 편집 버튼이 남으면 안 된다 */
+    E("sel={nodeIds:['d1'], edgeId:null}; openNodePanel();"); await wait(40);
+    E("openPanel('list'); renderNodePanel();"); await wait(40);
+    T("21-31 늦게 도착한 렌더가 편집 버튼을 되살리지 않는다",
+      doc.getElementById("npEdit").hidden === true);
+
+    /* 목차는 데이터 변경을 따라가야 한다 (예전엔 gotoNode 의 부수 효과가 덮고 있었다) */
+    E("if(rpCur !== 'list') openPanel('list');"); await wait(40);
+    E("nodeById(curTab(),'d2').name = '새 이름'; commit(); renderAll();");
+    await wait(40);
+    T("21-32 이름을 바꾸면 목차가 따라온다",
+      doc.querySelector('#tocBody [data-id=\"d2\"] .tn').textContent === "새 이름");
+    E("curTab().nodes = curTab().nodes.filter(n => n.id !== 'd2'); commit(); renderAll();");
+    await wait(40);
+    T("21-33 지운 노드는 목차에서도 사라진다",
+      doc.querySelector('#tocBody [data-id=\"d2\"]') === null);
+    E("closePanel();");
+
     /* 0.8초가 차기 전에 창을 닫아도 잃지 않는다 */
     E("sel={nodeIds:['d1'], edgeId:null}; openNodePanel();");
     await wait(40);
@@ -1167,7 +1241,7 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     de2.dispatchEvent(new w.Event("input", {bubbles:true}));
     w.dispatchEvent(new w.Event("beforeunload"));
     await wait(30);
-    T("21-16 창을 닫으면 대기 중인 글자도 저장",
+    T("21-34 창을 닫으면 대기 중인 글자도 저장",
       E("(undoMap[activeTabId]||[]).length") === 1 &&
       E("nodeById(curTab(),'d1').desc") === "닫기 직전 글자");
     E("closePanel();");

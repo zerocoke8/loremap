@@ -52,7 +52,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§5-17 노드 이미지` | `shrinkImage`(긴 변 1600·JPEG 0.82) → `uploadImage` → Worker `/api/img` → R2. 노드에는 `{id,w,h,cap}` 만 남는다. `cleanupImages` 가 참조 없는 객체를 정리 |
 | `§5-16 노드 상세 패널` | `renderNodePanel`/`panelNode`/`openNodePanel`. 위 칸=이미지·이름·타입·속성·설명, 아래 칸=메모(노드별). 노드 클릭은 펼침과 패널을 **함께** 연다. 설명·메모는 `autoText`가 붙은 자동 저장 칸 — 입력이 `TEXT_SAVE_MS`(800ms) 멈추면 `commit()` 한 번, blur·`beforeunload`에서는 `flushPendingText()`로 즉시. 그 커밋 하나가 되돌리기 한 단계다 |
 | 노드 겹침 | `topNodeId`(런타임 전용, 마지막으로 건드린 카드) → `.node.top` z-index 6. 펼침·선택·최상단은 타입 색조를 불투명 바탕 위에 얹어 뒤를 가린다 |
-| `§5-18 노드 목차` | `renderTocPanel`/`gotoNode`/`toggleTocSection`. 주 타입 기준으로 한 번만 나열해 중복을 막는다. 한 번 클릭=이동, 두 번=상세까지, 타입 이름 클릭=접기(`tocClosed`, 세션 한정) |
+| `§5-18 노드 목차` | `renderTocPanel`(`tocSig` 로 내용이 같으면 DOM 을 건드리지 않는다)/`gotoNode`/`markTocCurrent`/`toggleTocSection`. 주 타입 기준으로 한 번만 나열해 중복을 막는다. 한 번 클릭=이동, 두 번=상세까지(`TOC_DBL_MS` 수동 감지), 타입 이름 클릭=접기(`tocClosed`, 세션 한정) |
 | `§5-14 노드 검색` | `runSearch`/`stepSearch`/`centerOnNode`. `searchHits`+`searchIdx`+`searchQuery`(재검색·순회 구분). 강조는 `renderNodes` 가 `.found`/`.cur` 클래스로 |
 | `§5-15 선택 영역 복사` | `copySelection`/`pasteClip`(내부 버퍼 `clipBuf`), `copySelectionImage`(캔버스에 직접 그려 투명 PNG). 연결선은 화면 SVG 의 `d`(M x y Q …)를 그대로 재현한다 |
 | `§5-4 노드 자동 정렬` | `computeRadialLayout`, `tweenTo` |
@@ -72,6 +72,11 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - 되돌리기는 `commit()`마다 `recordUndo()`가 적재한다(새 데이터 변형 기능은 마지막에 `commit()`만 부르면 된다). **스택이 둘로 나뉘어 있다** — 탭 내용은 탭별 `undoMap/redoMap`(활성 탭만 되돌린다), 탭 집합 변화(추가·복제·삭제·가져오기)는 전역 `undoStack/redoStack`. 두 스택 항목에 붙은 전역 순번 `seq`를 비교해 **시간 역순**으로 소비한다.
 - 되돌리기 적용은 `applyTabSnapshot`(활성 탭 하나만 교체 — 탭이 바뀌지 않는다)과 `applyStruct`(탭 집합만 맞추고 살아남은 탭 객체는 그대로 재사용)로 갈라진다. `applyStruct`는 현재 탭이 살아 있으면 그 탭에 머물고, 탭이 되살아나거나 사라진 복원이라 `pushAllToFB()` 후 `attachTab(id,false)`로 서버를 맞춘다. 가져오기처럼 tabs 전체가 교체되는 변경만 `recordFullUndo()`로 내용까지 되돌린다.
 - 탭이 사라지는 경로(`askDeleteTab`, `applyRemoteTabList`)에서는 `dropTabUndo(id)`로 그 탭의 히스토리를 함께 버릴 것. 안 그러면 죽은 키가 세션 내내 남는다.
+- **목차의 더블클릭은 직접 센다**(`TOC_DBL_MS`). `#tocBody`를 다시 그리면 두 번째 클릭이 사라진 요소에 떨어져, 브라우저가 `dblclick`을 공통 조상(`#tocBody`)에 쏘고 `closest('.toc-i')`가 null 이 된다. 그래서 ① `.cur`(현재 노드 강조)는 **생성 HTML 에 넣지 않고** `markTocCurrent()`가 제자리에서만 붙이고, ② `renderTocPanel`은 `tocSig`(직전 HTML)와 같으면 `innerHTML`을 건드리지 않는다. 이 둘 덕에 `renderAll()`이 목차를 매번 불러도 요소가 살아남는다. 합성 `dblclick`을 쏘는 테스트는 이 회귀를 잡지 못한다 — 클릭 **두 번**으로 검증할 것.
+- 목차는 `renderAll()`이 끌고 간다(`rpCur === 'list'`일 때). `commit()`은 패널을 갱신하지 않으므로, 여기서 빼면 이름 변경·삭제 뒤 목차에 유령 항목이 남는다.
+- **`rows=N` textarea 에 `scrollHeight` 기반 자동 높이를 붙이지 말 것.** `height:'auto'`면 textarea 는 `rows` 크기로 돌아가고 `scrollHeight ≥ clientHeight`라 그 아래로 줄지 않는다(`min-height:0`도 무력). 게다가 한 번 잰 px 를 `overflow:hidden`과 함께 고정하면 나중에 스크롤바가 생겨 폭이 줄 때 마지막 줄이 잘리고, 편집 모드에서 `style.height=''`로 되돌리면 사용자가 드래그로 늘린 높이를 지운다. 노드 설명은 **보기용 `#npDescView`(div) + 편집용 `#npDesc`(textarea)** 로 나눠 높이를 아예 계산하지 않는다.
+- `.eo`는 `display:none`이라 **편집 모드에서만 보여야 하는 것에만** 붙인다. 보기 전용 방문자도 읽어야 하는 칸(노드 설명 등)에 붙이면 통째로 사라진다. 읽기 전용 표시는 `readOnly`로 하고 `.eo`는 붙이지 않는다.
+- 패널 헤더 `.rp-h`는 모든 패널이 공유한다. 거기 둔 버튼(`#npEdit`)은 `openPanel`·`closePanel`·`renderNodePanel` 세 곳에서 `hidden`을 맞춘다. `renderNodePanel`은 `await uploadImage()` 뒤처럼 **패널이 이미 바뀐 뒤에도 불리므로** `rpCur !== 'node'`를 직접 확인해야 한다. 헤더에 `#id` 로 색을 주면 `.rp-h button:hover`(특이도 0,2,1)를 이겨 버리니 `:hover`도 같이 정의할 것.
 - 연결선은 노드 테두리에서 절단된다(`trimQuad`, 이분 탐색). 노드 크기·위치를 바꾸는 코드는 `renderEdges()` 또는 `updateEdgesFor()`를 다시 불러야 절단이 맞는다.
 - AI 사건 생성은 노드 선택 모드(`evPick`, `#pickBanner`)로 동작한다. 선택 모드 중 노드 클릭은 펼침이 아니라 선택 토글이다.
 - `sel`은 항상 `{nodeIds:배열, edgeId}` 형태여야 한다. `nodeId`(단수)로 잘못 쓰면 `isSel`이 `undefined.includes`로 죽고, `renderNodes`는 `nodesEl.innerHTML=''` 직후 예외로 중단되어 **노드가 화면에서 전부 사라진다**(새로고침 전까지). 선택 해제는 `clearSel()`을 쓸 것.
