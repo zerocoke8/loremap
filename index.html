@@ -764,6 +764,19 @@ const DEFAULT_TYPES = [
 /* 기본 7종의 기존 색을 HSL로 옮긴 값 — 그 뒤 순서는 색상환을 돌며 자동 생성 */
 const TYPE_HSL = [[276,60,59],[205,68,58],[170,60,53],[100,45,52],[45,77,60],[29,62,56],[232,23,46]];
 
+/* 타입 목록 정규화 — 저장·전송·수신이 모두 이 함수를 지나야 한다.
+   ⚠ fields 를 빠뜨리면 타입 템플릿이 새로고침에서 사라진다(실제로 그랬다). */
+function normTypes(list){
+  return (Array.isArray(list) ? list : DEFAULT_TYPES)
+    .filter(x => x && x.key)
+    .map(x => ({
+      key: String(x.key),
+      label: String(x.label ?? '무제').slice(0, 20),
+      fields: Array.isArray(x.fields)
+        ? x.fields.map(f => String(f).slice(0, 24)).filter(Boolean).slice(0, 20) : []
+    }));
+}
+
 function typeList(tab){
   const l = tab && tab.nodeTypes;
   return (Array.isArray(l) && l.length) ? l : DEFAULT_TYPES;
@@ -822,11 +835,7 @@ function sanitizeTab(t){
   if(!Array.isArray(t.nodeTypes) || !t.nodeTypes.length){
     t.nodeTypes = DEFAULT_TYPES.map(x => ({...x}));
   }else{
-    t.nodeTypes = t.nodeTypes
-      .filter(x => x && x.key)
-      .map(x => ({key: String(x.key), label: String(x.label ?? '무제').slice(0, 20),
-                 fields: Array.isArray(x.fields)
-                   ? x.fields.map(f => String(f).slice(0, 24)).filter(Boolean).slice(0, 20) : []}));
+    t.nodeTypes = normTypes(t.nodeTypes);
     if(!t.nodeTypes.length) t.nodeTypes = DEFAULT_TYPES.map(x => ({...x}));
   }
   if(!t.nodes) t.nodes = [];
@@ -1333,7 +1342,7 @@ function cleanTab(t){
     edges: (t.edges||[]).filter(e => !e._aiPreview).map(cleanEdgeLS),
     events: (t.events||[]).map(cleanEventLS),
     worldPrompt: t.worldPrompt ?? '',
-    nodeTypes: (t.nodeTypes || DEFAULT_TYPES).map(x => ({key:x.key, label:x.label})),
+    nodeTypes: normTypes(t.nodeTypes || DEFAULT_TYPES),
     refImages: (t.refImages||[]).slice(0,3)
   };
 }
@@ -1489,7 +1498,7 @@ function normFB(kind, d){
 }
 function metaFB(t){
   return {title:t.title??'무제', worldPrompt:t.worldPrompt??'',
-          nodeTypes:(t.nodeTypes || DEFAULT_TYPES).map(x => ({key:x.key, label:x.label})),
+          nodeTypes: normTypes(t.nodeTypes || DEFAULT_TYPES),
           refImages:(t.refImages || []).filter(v => !String(v).startsWith('data:')).slice(0,3)};
 }
 /* ⚠ 스냅샷 비교 키는 반드시 metaFB 를 거쳐야 한다 — 필드가 어긋나면 meta 를 무한 재전송한다 */
@@ -1807,7 +1816,7 @@ async function attachTab(tabId, applyServer = true){
     t.title = m.title ?? t.title;
     t.worldPrompt = m.worldPrompt ?? '';
     if(Array.isArray(m.nodeTypes) && m.nodeTypes.length){
-      t.nodeTypes = m.nodeTypes.map(x => ({key:x.key, label:x.label}));
+      t.nodeTypes = normTypes(m.nodeTypes);
     }
     if(Array.isArray(m.refImages)) t.refImages = m.refImages.slice(0, 3);
     queueRemoteRender();
@@ -1833,7 +1842,7 @@ function adoptServerTab(tab, v, applyLocal = true){
       tab.title = m.title ?? tab.title;
       tab.worldPrompt = m.worldPrompt ?? tab.worldPrompt ?? '';
       if(Array.isArray(m.nodeTypes) && m.nodeTypes.length){
-        tab.nodeTypes = m.nodeTypes.map(x => ({key:x.key, label:x.label}));
+        tab.nodeTypes = normTypes(m.nodeTypes);
       }
       if(Array.isArray(m.refImages)) tab.refImages = m.refImages.slice(0, 3);
     }
@@ -3642,13 +3651,37 @@ async function callClaude(system, messages, maxTokens = 2000){
   return (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
 }
 
+const DATA_URL_RE = /^data:(image\/[\w.+-]+);base64,(.+)$/s;
+
+/* 참고 이미지를 실제로 실어 보낼 수 있는 형태로 바꾼다.
+   R2 참조(id)는 받아서 축소한 뒤 base64 로, 옛 데이터의 data: URL 은 그대로.
+   원본을 그대로 실으면 20MB 짜리가 그대로 요청에 들어가므로 반드시 줄인다. */
+async function refImageParts(refImgs){
+  const out = [];
+  for(const v of (refImgs || []).slice(0, 3)){
+    const raw = String(v || '');
+    if(!raw) continue;
+    let m = DATA_URL_RE.exec(raw);
+    if(!m && API_BASE){
+      try{
+        const r = await fetch(imgUrl(raw));
+        if(!r.ok) throw new Error('HTTP ' + r.status);
+        const {blob} = await shrinkImage(await r.blob());
+        m = DATA_URL_RE.exec(await blobToDataUrl(blob));
+      }catch(err){
+        console.warn('참고 이미지를 싣지 못했습니다', raw, err);
+      }
+    }
+    if(m) out.push({inlineData:{mimeType:m[1], data:m[2]}});
+  }
+  return out;
+}
+
+/* prompt 에 함수를 주면 '실제로 실린 장수'를 받아 문구를 만든다 —
+   한 장도 못 실었는데 '첨부한 그림체를 따르라'고 말하는 일이 없게. */
 async function callGemini(prompt, refImgs){
-  const parts = [];
-  (refImgs || []).slice(0,3).forEach(dataUrl => {
-    const m = /^data:(image\/[\w.+-]+);base64,(.+)$/s.exec(dataUrl || '');
-    if(m) parts.push({inlineData:{mimeType:m[1], data:m[2]}});
-  });
-  parts.push({text: prompt});
+  const parts = await refImageParts(refImgs);
+  parts.push({text: (typeof prompt === 'function') ? prompt(parts.length) : prompt});
   const d = await apiPost('/api/gemini', {
     model: IMG_MODEL,
     contents:[{parts}],
@@ -3949,6 +3982,15 @@ const IMG_MAX_EDGE = 1600;      // 긴 변 기준 축소 — 원본을 그대로
 const IMG_QUALITY  = 0.82;
 
 /* 파일 → 긴 변 1600px JPEG Blob (+ 실제 크기). 투명이 필요한 PNG 도 배경을 깔아 JPEG 로 통일한다. */
+function blobToDataUrl(blob){
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ''));
+    fr.onerror = () => reject(new Error('이미지를 읽지 못했습니다'));
+    fr.readAsDataURL(blob);
+  });
+}
+
 function shrinkImage(file){
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -4683,12 +4725,21 @@ function openVisitModal(node){
     imgWrap.hidden = false;
     imgWrap.innerHTML = `<div class="center"><div class="spin"></div>일러스트를 그리는 중…</div>`;
     try{
-      const style = (tab.refImages || []).length
-        ? '첨부한 참고 이미지의 그림체와 색감을 따른다.'
-        : '다크 판타지 일러스트, 절제된 조명과 깊은 색감.';
-      const prompt = `${style}\n세계관 분위기: ${(tab.worldPrompt || '').slice(0,300) || '다크 판타지'}\n` +
-        `다음 장면을 한 장의 일러스트로: ${lastVisit.text.slice(0,600)}`;
-      const url = await callGemini(prompt, tab.refImages);
+      let used = 0;
+      const url = await callGemini(n => {
+        used = n;
+        const style = n
+          ? `첨부한 참고 이미지 ${n}장과 같은 그림체로 그린다. ` +
+            `선의 굵기와 질감, 채색 방식, 색감, 명암 처리를 그 그림들과 똑같이 맞춘다. ` +
+            `참고 이미지에 담긴 인물·사물·배경 자체를 옮겨 그리지는 말고 화풍만 따른다.`
+          : '다크 판타지 일러스트, 절제된 조명과 깊은 색감.';
+        return `${style}\n세계관 분위기: ${(tab.worldPrompt || '').slice(0,300) || '다크 판타지'}\n` +
+          `다음 장면을 한 장의 일러스트로: ${lastVisit.text.slice(0,600)}`;
+      }, tab.refImages);
+      /* 참고 이미지를 넣어 뒀는데 한 장도 못 실었으면 조용히 넘기지 않는다 */
+      if((tab.refImages || []).length && !used){
+        toast('참고 이미지를 불러오지 못해 그림체 없이 그렸습니다', true);
+      }
       imgWrap.innerHTML = `<img src="${url}" alt="장면 일러스트">`;
     }catch(err){
       imgWrap.innerHTML = `<div class="empty">${escHtml(err.message)}</div>`;

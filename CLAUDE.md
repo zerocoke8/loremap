@@ -27,6 +27,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 ## 절대 바꾸면 안 되는 것 (기존 사용자 데이터 호환)
 
 - **데이터 스키마**: Tab{id,title,nodes,edges,events,worldPrompt,nodeTypes,refImages}, Node{id,type,name,desc,x,y}, Edge{id,from,to,label,desc,isParent}, Event{id,time,body,order}. `gid()`='i'+카운터. 런타임 전용 필드는 `_exp`, `_aiPreview`, `_chat`이며 절대 저장하지 않는다(`cleanTab` 화이트리스트).
+- **타입 목록 정규화는 `normTypes()` 하나만 쓴다** — `sanitizeTab`·`cleanTab`·`metaFB`·meta 수신·`adoptServerTab` 다섯 자리가 같은 함수를 지나야 한다. 예전에 네 곳이 `{key,label}` 만 넘겨 `fields`(타입 기본 속성)가 새로고침을 못 넘겼다. 모양이 한 곳만 달라도 `metaKey` 가 어긋나 meta 를 무한 재전송한다.
 - **노드 타입은 탭 데이터**다(`Tab.nodeTypes = [{key,label,fields[]}]` — `fields` 는 그 타입 노드에 기본으로 깔아줄 속성 이름들, 배열 순서 = 상하위 단계, 색은 순서대로 자동 배정, 이모지 없음). 옛 상수 `TL/TI/TC/TYPES`는 없어졌고 `DEFAULT_TYPES`/`typeList/typeLabel/typeColors/typeKeyOr`가 대신한다. **`key`는 `node.type`에 저장되는 값이라 절대 바꾸지 않는다**(label만 변경). 기본 7종의 key(world…custom)는 기존 사용자 데이터 호환을 위해 유지한다.
 - **localStorage 키**: `wm_tabs` = `JSON.stringify({tabs})` 형식 고정. `wm_fbcfg`(수동 Firebase 설정), `wm_theme`, `wm_edgecolor`, `wm_edgeshape`, `wm_toc`(접어둔 목차 타입 key 배열), `wm_npsize`(설명·메모 칸 높이 `{desc,memo}`), `wm_lasttab`(마지막으로 보던 탭 id). 옛 키 `wm_k/wm_gk/wm_mh`는 더 이상 쓰지 않지만 지우지도 않는다. **화면 취향(테마·목차·칸 높이)만 넣는다 — 세계관 데이터는 `wm_tabs` 하나뿐이다.**
 - **Firebase 경로**: `worldmind/tabList[{id,title}]`, `worldmind/tabs/{tabId}/{meta{title,worldPrompt,_w}, nodes/{id}, edges/{id}, events/{id}}`. 모든 항목에 `_w`=세션 ID(`FB_SID`). 구 포맷 `worldmind/{tabs:[…]}`는 `migrateIfOld`가 자동 이전한다.
@@ -99,6 +100,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - 목록에는 있는데 `tabs/{id}`가 없는 탭을 곧바로 지우면 안 된다. 다른 기기가 방금 만들어 내용이 아직 안 올라온 정상 케이스와 구분되지 않는다. `watchTabUntilFilled`로 지켜보다 채우고, 삭제는 `sweepOrphanTabs`가 유예(`ORPHAN_GRACE_MS`) 후 재확인한 뒤 **편집 모드에서만** 한다. 보기 모드에서 로컬만 줄이면 다음 `fbSyncActive`가 그 축소된 목록을 서버에 밀어넣어 남의 탭을 지운다.
 - 타입 색은 CSS 클래스가 아니라 `renderNodes`가 노드마다 인라인 `--c`/`--c-bg`로 넣는다. 테마를 바꾸면 색을 다시 계산해야 하므로 `applyTheme`이 `renderAll()`을 부른다.
 - Firebase meta 스냅샷 키는 반드시 `metaKey()`(=`metaFB` 직렬화)를 쓸 것. 필드가 하나라도 어긋나면 meta 를 무한 재전송한다.
+- **참고 그림체(`refImages`)는 R2 참조라 AI 에 그대로 넘길 수 없다.** `callGemini` 는 `data:` URL 만 인라인으로 실을 수 있어서, `refImageParts()` 가 참조를 받아 `shrinkImage` 로 줄인 뒤 base64 로 바꾼다(원본은 20MB 까지라 반드시 줄인다). `callGemini(prompt, refs)` 의 `prompt` 에 **함수**를 주면 실제로 실린 장수를 받는다 — 한 장도 못 실었는데 "첨부한 그림체를 따르라"고 말하지 않도록 문구를 그 숫자에 묶을 것.
 - 이미지 바이트는 절대 localStorage·Firebase 에 넣지 말 것. base64 로 넣으면 5~10MB 에서 터진다. R2 에 두고 노드에는 참조만 남긴다. **읽기 엔드포인트는 토큰 게이트 앞**에 있어야 보기 전용 방문자도 그림을 본다.
 - 테마는 `THEMES`(dark·light·sepia·slate) 네 가지. 밝은 배경 계열 판정은 `LIGHT_THEMES` 를 쓸 것 — `curTheme === 'light'` 로 비교하면 세피아가 어두운 계열로 잘못 잡힌다.
 - 노드의 `tags`(소속)는 노드에만 붙는 꼬리표다. `nodeTypes` 와 무관하며 타입 목록에 들어가지 않는다.

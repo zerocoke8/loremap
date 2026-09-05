@@ -333,7 +333,30 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     E('saveLocal()');
     const savedTab = JSON.parse(w.localStorage.getItem('wm_tabs')).tabs[0];
     T('8-14 저장 데이터에 nodeTypes 포함', Array.isArray(savedTab.nodeTypes) && savedTab.nodeTypes.length === 8);
-    T('8-15 저장에 런타임 색·이모지 없음', savedTab.nodeTypes.every(t => Object.keys(t).sort().join(',') === 'key,label'));
+    T('8-15 저장 모양은 key·label·fields 셋뿐(런타임 색·이모지 없음)',
+      savedTab.nodeTypes.every(t => Object.keys(t).sort().join(',') === 'fields,key,label'),
+      savedTab.nodeTypes.map(t => Object.keys(t).sort().join(',')));
+    /* 타입의 기본 속성이 저장을 못 넘기던 버그 — 네 곳(cleanTab·metaFB·meta 수신·adoptServerTab)이
+       {key,label} 만 넘겨 🏷 타입 관리에서 적은 값이 새로고침에서 사라졌다 */
+    E("curTab().nodeTypes[0].fields = ['코스트','계열']; saveLocal();");
+    const again = JSON.parse(w.localStorage.getItem('wm_tabs')).tabs[0];
+    T('8-16 기본 속성이 저장에 실린다',
+      (again.nodeTypes[0].fields || []).join(',') === '코스트,계열', again.nodeTypes[0]);
+    T('8-17 Firebase meta 에도 실린다',
+      E("JSON.stringify(metaFB(curTab()).nodeTypes[0].fields)") === '["코스트","계열"]',
+      E("JSON.stringify(metaFB(curTab()).nodeTypes[0])"));
+    T('8-18 metaKey 가 기본 속성 변화를 잡는다', (() => {
+      const before = E("metaKey(curTab())");
+      E("curTab().nodeTypes[0].fields = ['코스트']");
+      const after = E("metaKey(curTab())");
+      E("curTab().nodeTypes[0].fields = ['코스트','계열']");
+      return before !== after;
+    })());
+    T('8-19 정규화가 한 함수를 지난다 — 길이·글자수 상한',
+      E("JSON.stringify(normTypes([{key:'k', label:'x'.repeat(30), fields:['y'.repeat(40), '', 'z']}])[0])") ===
+      JSON.stringify({key:'k', label:'x'.repeat(20), fields:['y'.repeat(24), 'z']}));
+    T('8-20 서버에서 온 타입도 기본 속성을 지킨다',
+      E("JSON.stringify(normTypes([{key:'char', label:'인물', fields:['나이']}])[0].fields)") === '["나이"]');
   }
 
   /* ---- 9. 선택 영역 복사(Ctrl+C) / 붙여넣기(Ctrl+V) ---- */
@@ -1573,6 +1596,94 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
       [...doc.querySelectorAll(".toast")].map(e=>e.textContent).join(" | "));
     T("26-14 올린 파일은 둘뿐 — 카드 위와 노드 없음은 올라가지 않는다",
       E("window.__up.length") === 2, E("JSON.stringify(window.__up)"));
+  }
+
+  /* ---- 27. 참고 그림체가 AI 에 실린다 ---- */
+  {
+    /* callGemini 는 data: URL 만 받았는데 참고 이미지는 R2 참조(id)로 저장된다 —
+       정규식이 전부 걸러내 프롬프트만 그림체를 말하고 이미지는 한 장도 안 실렸다. */
+    E("clearSel(); closePanel(); activeTabId = tabs[0].id;");
+
+    /* R2 에서 받아오는 부분과 축소를 가로챈다 (jsdom 에는 canvas 가 없다) */
+    E("window.__fetched = [];");
+    E("window.fetch = async u => { window.__fetched.push(String(u)); " +
+      "return {ok:true, status:200, blob: async () => ({__blob:true})}; };");
+    E("shrinkImage = async b => ({blob:b, w:100, h:100});");
+    E("blobToDataUrl = async () => 'data:image/jpeg;base64,QUJD';");
+
+    T("27-1 R2 참조 id 는 data: URL 이 아니다 — 그래서 변환이 필요하다",
+      E("DATA_URL_RE.test('imref01.jpg')") === false);
+    const parts = JSON.parse(await new Promise(res => {
+      E("refImageParts(['imref01.jpg','imref02.jpg']).then(p => window.__p = JSON.stringify(p));");
+      const tick = () => { const v = E("window.__p"); v ? res(v) : setTimeout(tick, 10); };
+      tick();
+    }));
+    T("27-2 두 장 모두 실렸다", parts.length === 2, parts.length);
+    T("27-3 inlineData 모양", parts[0]?.inlineData?.mimeType === "image/jpeg" &&
+      parts[0]?.inlineData?.data === "QUJD");
+    T("27-4 Worker 이미지 주소로 받아왔다",
+      E("window.__fetched.join(',')").includes("/api/img/imref01.jpg"));
+
+    /* 옛 데이터의 data: URL 도 그대로 받는다 */
+    E("window.__p = null;");
+    const old = JSON.parse(await new Promise(res => {
+      E("refImageParts(['data:image/png;base64,WFla']).then(p => window.__p = JSON.stringify(p));");
+      const tick = () => { const v = E("window.__p"); v ? res(v) : setTimeout(tick, 10); };
+      tick();
+    }));
+    T("27-5 옛 base64 데이터도 그대로", old.length === 1 &&
+      old[0]?.inlineData?.mimeType === "image/png" && old[0]?.inlineData?.data === "WFla");
+
+    /* 못 받아오면 조용히 빼고, 프롬프트도 거짓말하지 않는다 */
+    E("window.fetch = async () => ({ok:false, status:404});");
+    E("window.__p = null;");
+    const bad = JSON.parse(await new Promise(res => {
+      E("refImageParts(['imref99.jpg']).then(p => window.__p = JSON.stringify(p));");
+      const tick = () => { const v = E("window.__p"); v ? res(v) : setTimeout(tick, 10); };
+      tick();
+    }));
+    T("27-6 못 받아온 이미지는 빠진다", bad.length === 0);
+
+    /* 프롬프트가 실제로 실린 장수를 말한다 */
+    E("window.__sent = null;");
+    E("apiPost = async (path, body) => { window.__sent = JSON.stringify(body); " +
+      "return {candidates:[{content:{parts:[{inlineData:{mimeType:'image/png', data:'T0s='}}]}}]}; };");
+    E("window.fetch = async u => ({ok:true, status:200, blob: async () => ({__blob:true})});");
+    E("window.__url = null;");
+    await new Promise(res => {
+      E("callGemini(n => '실린 장수는 ' + n + '장', ['imref01.jpg','imref02.jpg'])" +
+        ".then(u => window.__url = u);");
+      const tick = () => { E("window.__url") ? res() : setTimeout(tick, 10); };
+      tick();
+    });
+    const sent = JSON.parse(E("window.__sent"));
+    const sentParts = sent.contents[0].parts;
+    T("27-7 이미지 두 장 + 글 한 덩이", sentParts.length === 3 &&
+      sentParts[0].inlineData && sentParts[1].inlineData && typeof sentParts[2]?.text === "string");
+    T("27-8 프롬프트가 실린 장수를 말한다", sentParts[2]?.text === "실린 장수는 2장", sentParts[2]?.text);
+    T("27-9 글은 항상 마지막에", sentParts[sentParts.length-1]?.text !== undefined);
+
+    /* 한 장도 못 실으면 프롬프트가 0장으로 말한다 — 없는 그림체를 따르라고 하지 않는다 */
+    E("window.fetch = async () => ({ok:false, status:404}); window.__url = null; window.__sent = null;");
+    await new Promise(res => {
+      E("callGemini(n => '실린 장수는 ' + n + '장', ['imref99.jpg']).then(u => window.__url = u);");
+      const tick = () => { E("window.__url") ? res() : setTimeout(tick, 10); };
+      tick();
+    });
+    const sent2 = JSON.parse(E("window.__sent"));
+    T("27-10 못 실었으면 0장이라고 말한다",
+      sent2.contents[0].parts.length === 1 && sent2.contents[0].parts[0]?.text === "실린 장수는 0장",
+      JSON.stringify(sent2.contents[0].parts));
+
+    /* 글자열을 그냥 넘기던 예전 호출 방식도 그대로 동작 */
+    E("window.__url = null; window.__sent = null;");
+    await new Promise(res => {
+      E("callGemini('그냥 문자열', []).then(u => window.__url = u);");
+      const tick = () => { E("window.__url") ? res() : setTimeout(tick, 10); };
+      tick();
+    });
+    T("27-11 문자열 프롬프트도 그대로 받는다",
+      JSON.parse(E("window.__sent")).contents[0].parts[0]?.text === "그냥 문자열");
   }
 
   done();
