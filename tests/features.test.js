@@ -840,15 +840,16 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     /* 아래 칸: 링크 */
     E("sel = {nodeIds:['p1'], edgeId:null}; renderNodePanel();");
     await wait(20);
-    T("16-11 링크가 없으면 안내", doc.querySelector("#npLinks .hint") !== null);
-    E("nodeById(curTab(),'p1').links = [{url:'https://example.com', label:'설정 문서'}]; commit(); renderNodePanel();");
+    T("16-11 링크 추가 버튼은 없앰(메모로 대체)", doc.getElementById("npLinkAdd") === null);
+    E("nodeById(curTab(),'p1').memo = '설정은 https://example.com 참고'; commit(); renderNodePanel();");
     await wait(20);
-    T("16-12 링크 표시", doc.querySelector("#npLinks a").textContent === "설정 문서" &&
-      doc.querySelector("#npLinks a").getAttribute("href") === "https://example.com");
-    T("16-13 새 창으로 안전하게 열림", doc.querySelector("#npLinks a").getAttribute("rel").includes("noopener"));
-    doc.querySelector("#npLinks .ty-btn").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
-    await wait(30);
-    T("16-14 × 로 링크 삭제", E("nodeById(curTab(),'p1').links.length") === 0);
+    T("16-12 메모의 주소가 링크로", doc.querySelector("#npMemoLinks a") &&
+      doc.querySelector("#npMemoLinks a").getAttribute("href") === "https://example.com");
+    T("16-13 새 창으로 안전하게 열림", doc.querySelector("#npMemoLinks a").getAttribute("rel").includes("noopener"));
+    E("nodeById(curTab(),'p1').links = [{url:'https://old.example', label:'옛 링크'}]; renderNodePanel();");
+    await wait(20);
+    T("16-14 옛 데이터의 링크도 함께 보임", [...doc.querySelectorAll("#npMemoLinks a")].length === 2);
+    E("nodeById(curTab(),'p1').links = []; nodeById(curTab(),'p1').memo = ''; renderNodePanel();");
 
     /* 아래 칸: 메모 자동 저장 */
     const memo = doc.getElementById("npMemo");
@@ -980,6 +981,106 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     const bg = w.getComputedStyle(doc.querySelector('[data-id="u2"]')).background || "";
     T("18-14 최상단 카드는 불투명 바탕을 깐다", bg.includes("linear-gradient") || bg.includes("gradient"), bg.slice(0, 80));
     E("clearSel(); topNodeId = null; closePanel(); renderAll();");
+  }
+
+  /* ---- 19. 커스텀 소속(tags) + 이름 변경 ---- */
+  {
+    T("19-1 사이트 이름이 Loremap", doc.title.startsWith("Loremap") &&
+      doc.querySelector("#tabbar .logo").textContent === "LOREMAP");
+
+    E("clearSel(); closePanel(); tabs.length=1; tabs[0].nodes.length=0; tabs[0].edges.length=0; activeTabId=tabs[0].id;");
+    E("tabs[0].nodes.push({id:'t1', type:'char', name:'레온', desc:'', x:1000, y:1000});");
+    E("setEditMode(true); commit(); renderAll(); sel={nodeIds:['t1'], edgeId:null}; openNodePanel();");
+    await wait(40);
+    T("19-2 소속 추가 버튼이 타입 옆에", doc.getElementById("npTagAdd") !== null);
+
+    E("nodeById(curTab(),'t1').tags = ['은빛 기사단']; commit(); renderNodePanel(); renderAll();");
+    await wait(30);
+    T("19-3 패널에 소속 표시", [...doc.querySelectorAll("#npHead .nt.tag")].some(e => e.textContent.includes("은빛 기사단")));
+    T("19-4 카드에도 소속 표시", [...doc.querySelectorAll('[data-id="t1"] .nt.tag')].some(e => e.textContent === "은빛 기사단"));
+    T("19-5 소속은 타입 목록에 안 들어감", !E("typeList(curTab()).some(t => t.label === '은빛 기사단')"));
+
+    /* 칩을 누르면 삭제 */
+    doc.querySelector("#npHead .nt.tag").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(30);
+    T("19-6 칩을 눌러 소속 삭제", E("nodeById(curTab(),'t1').tags.length") === 0);
+
+    /* 저장·동기화 */
+    E("nodeById(curTab(),'t1').tags = ['북방','북방','기사단']; sanitizeTab(curTab()); commit(); saveLocal();");
+    await wait(20);
+    T("19-7 중복 소속은 정리", E("nodeById(curTab(),'t1').tags.length") === 2);
+    const saved = JSON.parse(w.localStorage.getItem("wm_tabs")).tabs[0].nodes[0];
+    T("19-8 저장에 tags 포함", Array.isArray(saved.tags) && saved.tags.length === 2);
+    T("19-9 Firebase 정규화에도 포함", E("JSON.stringify(normFB('nodes', nodeById(curTab(),'t1')))").includes('"tags"'));
+    E("closePanel();");
+  }
+
+  /* ---- 20. 목차 · 테마 · 참고 이미지 ---- */
+  {
+    E("clearSel(); closePanel(); tabs.length=1; tabs[0].nodes.length=0; tabs[0].edges.length=0; activeTabId=tabs[0].id;");
+    E("tabs[0].nodeTypes = DEFAULT_TYPES.map(x=>({...x}));");
+    E("tabs[0].nodes.push(" +
+      "{id:'m1', type:'world', types:['world'], name:'아르카디아', desc:'', x:1000, y:1000}," +
+      "{id:'m2', type:'char', types:['char'], name:'레온', desc:'기사', tags:['은빛 기사단'], x:1400, y:1000}," +
+      "{id:'m3', type:'char', types:['char','group'], name:'세리', desc:'', x:1800, y:1000});");
+    E("tabs[0].edges.push({id:'me1', from:'m2', to:'m3', label:'', desc:'', isParent:true});");
+    E("setEditMode(true); commit(); renderAll(); openPanel('list');");
+    await wait(50);
+
+    T("20-1 목차 패널이 열림", E("rpCur") === "list" && !doc.getElementById("rpList").hidden);
+    const secs = [...doc.querySelectorAll("#tocBody .toc-sec .toc-name")].map(e => e.textContent);
+    T("20-2 타입 순서대로(상위→하위)", secs[0] === "세계" && secs.indexOf("인물") > secs.indexOf("세계"), secs);
+    T("20-3 노드가 주 타입 아래 한 번만", doc.querySelectorAll('#tocBody [data-id="m3"]').length === 1);
+    T("20-4 인물 아래 2명", [...doc.querySelectorAll("#tocBody .toc-sec")]
+      .find(e => e.querySelector(".toc-name").textContent === "인물")
+      .querySelectorAll(".toc-i").length === 2);
+    T("20-5 소속이 부제로 보임", [...doc.querySelectorAll('#tocBody [data-id="m2"] .ts')][0].textContent.includes("은빛 기사단"));
+    T("20-6 같은 타입 안의 자식은 들여쓰기", doc.querySelector('#tocBody .toc-sub [data-id="m3"]') !== null);
+
+    /* 항목을 누르면 그 노드로 이동 */
+    doc.querySelector('#tocBody [data-id="m2"]').dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(40);
+    T("20-7 누르면 그 노드가 선택", E("sel.nodeIds.join(',')") === "m2");
+    const off = E("(function(){var r=wrapEl.getBoundingClientRect();var c=centerOf('m2');" +
+      "return Math.abs((c.x*view.z+view.px) - r.width/2);})()");
+    T("20-8 화면 중앙으로 이동", off < 1, off);
+    T("20-9 현재 노드가 목차에서 강조", doc.querySelector('#tocBody [data-id="m2"]').className.includes("cur"));
+
+    /* 걸러보기 */
+    doc.getElementById("tocFilter").value = "레온";
+    doc.getElementById("tocFilter").dispatchEvent(new w.Event("input", {bubbles:true}));
+    await wait(30);
+    T("20-10 이름으로 거르기", doc.querySelectorAll("#tocBody .toc-i").length === 1);
+    doc.getElementById("tocFilter").value = "";
+    doc.getElementById("tocFilter").dispatchEvent(new w.Event("input", {bubbles:true}));
+    await wait(30);
+
+    /* 테마 4종 */
+    T("20-11 테마 네 가지", E("JSON.stringify(THEMES)") === '["dark","light","sepia","slate"]');
+    E("applyTheme('sepia', false)");
+    await wait(20);
+    T("20-12 세피아 적용", doc.body.classList.contains("sepia") && E("curTheme") === "sepia");
+    T("20-13 세피아는 밝은 계열로 취급", E("LIGHT_THEMES.includes(curTheme)") === true);
+    E("applyTheme('slate', false)");
+    await wait(20);
+    T("20-14 슬레이트 적용 · 이전 테마 클래스 제거",
+      doc.body.classList.contains("slate") && !doc.body.classList.contains("sepia"));
+    T("20-15 슬레이트는 어두운 계열", E("LIGHT_THEMES.includes(curTheme)") === false);
+    E("applyTheme('없는테마', false)");
+    await wait(20);
+    T("20-16 모르는 테마는 다크로", E("curTheme") === "dark" && !doc.body.classList.contains("slate"));
+
+    /* 참고 이미지: R2 참조 + 옛 base64 병행 */
+    E("curTab().refImages = ['imref01.jpg', 'data:image/jpeg;base64,AAAA']; openPanel('world');");
+    await wait(40);
+    const imgs = [...doc.querySelectorAll("#refImgs img")].map(i => i.getAttribute("src"));
+    T("20-17 R2 참조는 Worker 주소로", imgs[0].includes("/api/img/imref01.jpg"));
+    T("20-18 옛 base64 도 그대로 표시", imgs[1].startsWith("data:image"));
+    T("20-19 안내 문구가 서버 저장으로 갱신",
+      [...doc.querySelectorAll("#rpWorld .rp-sec")].some(e => e.textContent.includes("원본")));
+    T("20-20 meta 동기화에 참고 이미지 포함(base64 제외)",
+      E("JSON.stringify(metaFB(curTab()).refImages)") === '["imref01.jpg"]');
+    E("curTab().refImages = []; closePanel();");
   }
 
   done();

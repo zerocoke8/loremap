@@ -176,7 +176,9 @@ T('R2 에 실제로 저장', bucket.has(up.id) && bucket.get(up.id).ct === 'imag
 r = await imgCall('/api/img', {headers:{...IH, 'content-type':'application/pdf'}, body:png});
 T('허용하지 않는 형식은 400', r.status === 400);
 r = await imgCall('/api/img', {headers:{...IH, 'content-type':'image/png'}, body:new Uint8Array(9*1024*1024)});
-T('8MB 초과는 413', r.status === 413);
+T('참고 그림체 원본을 위해 9MB 도 통과', r.status === 200);
+r = await imgCall('/api/img', {headers:{...IH, 'content-type':'image/png'}, body:new Uint8Array(21*1024*1024)});
+T('20MB 초과는 413', r.status === 413);
 r = await imgCall('/api/img', {headers:{...IH, 'content-type':'image/png'}, body:new Uint8Array(0)});
 T('빈 요청은 400', r.status === 400);
 

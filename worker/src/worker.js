@@ -38,7 +38,7 @@ const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;   // 12시간
 const MAX_TOKENS_CAP = 8192;
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
-const IMG_MAX_BYTES = 8 * 1024 * 1024;      // 클라이언트가 리사이즈해 보내므로 보통 300KB 안팎
+const IMG_MAX_BYTES = 20 * 1024 * 1024;     // 노드 이미지는 축소해 보내지만 참고 그림체는 원본이라 넉넉히 잡는다
 const IMG_TYPES = {'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp', 'image/gif':'gif'};
 
 export default {

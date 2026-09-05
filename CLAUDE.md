@@ -52,6 +52,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§5-17 노드 이미지` | `shrinkImage`(긴 변 1600·JPEG 0.82) → `uploadImage` → Worker `/api/img` → R2. 노드에는 `{id,w,h,cap}` 만 남는다. `cleanupImages` 가 참조 없는 객체를 정리 |
 | `§5-16 노드 상세 패널` | `renderNodePanel`/`panelNode`/`openNodePanel`. 위 칸=이미지·이름·타입·속성·설명, 아래 칸=링크·메모(노드별). 노드 클릭은 펼침과 패널을 **함께** 연다 |
 | 노드 겹침 | `topNodeId`(런타임 전용, 마지막으로 건드린 카드) → `.node.top` z-index 6. 펼침·선택·최상단은 타입 색조를 불투명 바탕 위에 얹어 뒤를 가린다 |
+| `§5-18 노드 목차` | `renderTocPanel`/`gotoNode`. 주 타입 기준으로 한 번만 나열해 중복을 막는다 |
 | `§5-14 노드 검색` | `runSearch`/`stepSearch`/`centerOnNode`. `searchHits`+`searchIdx`+`searchQuery`(재검색·순회 구분). 강조는 `renderNodes` 가 `.found`/`.cur` 클래스로 |
 | `§5-15 선택 영역 복사` | `copySelection`/`pasteClip`(내부 버퍼 `clipBuf`), `copySelectionImage`(캔버스에 직접 그려 투명 PNG). 연결선은 화면 SVG 의 `d`(M x y Q …)를 그대로 재현한다 |
 | `§5-4 노드 자동 정렬` | `computeRadialLayout`, `tweenTo` |
@@ -89,6 +90,8 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - 타입 색은 CSS 클래스가 아니라 `renderNodes`가 노드마다 인라인 `--c`/`--c-bg`로 넣는다. 테마를 바꾸면 색을 다시 계산해야 하므로 `applyTheme`이 `renderAll()`을 부른다.
 - Firebase meta 스냅샷 키는 반드시 `metaKey()`(=`metaFB` 직렬화)를 쓸 것. 필드가 하나라도 어긋나면 meta 를 무한 재전송한다.
 - 이미지 바이트는 절대 localStorage·Firebase 에 넣지 말 것. base64 로 넣으면 5~10MB 에서 터진다. R2 에 두고 노드에는 참조만 남긴다. **읽기 엔드포인트는 토큰 게이트 앞**에 있어야 보기 전용 방문자도 그림을 본다.
+- 테마는 `THEMES`(dark·light·sepia·slate) 네 가지. 밝은 배경 계열 판정은 `LIGHT_THEMES` 를 쓸 것 — `curTheme === 'light'` 로 비교하면 세피아가 어두운 계열로 잘못 잡힌다.
+- 노드의 `tags`(소속)는 노드에만 붙는 꼬리표다. `nodeTypes` 와 무관하며 타입 목록에 들어가지 않는다.
 - `worker.js`는 요청 필드를 화이트리스트로만 전달한다. 새 API 파라미터가 필요하면 Worker와 클라이언트 양쪽을 함께 수정.
 
 ## 배포
