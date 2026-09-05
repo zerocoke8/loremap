@@ -822,7 +822,8 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T("16-5 겸하는 타입 모두 표시", doc.querySelectorAll("#npHead .nt").length === 2);
     T("16-6 속성 표 — 빈 값도 항목은 보임", doc.querySelectorAll("#npProps .pk").length === 2 &&
       doc.querySelectorAll("#npProps .pv.empty").length === 1);
-    T("16-7 설명 표시", doc.getElementById("npDesc").textContent === "북방의 기사");
+    T("16-7 설명이 편집 가능한 칸에 표시", doc.getElementById("npDesc").value === "북방의 기사" &&
+      doc.getElementById("npDesc").tagName === "TEXTAREA");
     T("16-8 이미지 없으면 이미지 칸은 숨김", doc.getElementById("npImgs").hidden === true);
 
     /* 다른 노드를 클릭하면 내용이 바뀐다 */
@@ -857,7 +858,7 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     memo.dispatchEvent(new w.Event("input", {bubbles:true}));
     await wait(30);
     T("16-15 메모가 노드에 반영", E("nodeById(curTab(),'p1').memo") === "이 인물은 2막에서 배신한다");
-    await wait(700);
+    await wait(900);
     T("16-16 메모는 잠시 뒤 자동 커밋", E("(undoMap[activeTabId]||[]).length") > 0);
 
     /* 저장·동기화 형식 */
@@ -1081,6 +1082,95 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T("20-20 meta 동기화에 참고 이미지 포함(base64 제외)",
       E("JSON.stringify(metaFB(curTab()).refImages)") === '["imref01.jpg"]');
     E("curTab().refImages = []; closePanel();");
+  }
+
+  /* ---- 21. 설명 자동저장 · 목차 더블클릭/접기 ---- */
+  {
+    E("clearSel(); closePanel(); tabs.length=1; tabs[0].nodes.length=0; tabs[0].edges.length=0; activeTabId=tabs[0].id;");
+    E("tabs[0].nodeTypes = DEFAULT_TYPES.map(x=>({...x}));");
+    E("tabs[0].nodes.push(" +
+      "{id:'d1', type:'char', types:['char'], name:'레온', desc:'처음 설명', x:1000, y:1000}," +
+      "{id:'d2', type:'world', types:['world'], name:'아르카디아', desc:'', x:1500, y:1000});");
+    E("setEditMode(true); commit(); renderAll(); sel={nodeIds:['d1'], edgeId:null}; openNodePanel();");
+    await wait(50);
+
+    /* 제목이 메모로 */
+    T("21-1 제목이 '메모'", [...doc.querySelectorAll("#rpNode .rp-sec")].some(e => e.textContent.trim() === "메모"));
+
+    /* 설명이 편집 가능 + 자동저장 */
+    let de = doc.getElementById("npDesc");
+    T("21-2 편집 모드에서 설명 수정 가능", de.readOnly === false);
+    de.value = "고친 설명";
+    de.dispatchEvent(new w.Event("input", {bubbles:true}));
+    await wait(50);
+    T("21-3 입력 즉시 노드에 반영", E("nodeById(curTab(),'d1').desc") === "고친 설명");
+    E("undoMap[activeTabId] = []; redoMap[activeTabId] = [];");   // 상한(UNDO_MAX)에 걸리지 않게 비우고 센다
+    const before = E("(undoMap[activeTabId]||[]).length");
+    await wait(900);
+    T("21-4 0.8초 멈추면 자동 커밋(되돌리기 1단계)",
+      E("(undoMap[activeTabId]||[]).length") === before + 1);
+    E("doUndo()"); await wait(40);
+    T("21-5 되돌리면 이전 설명으로", E("nodeById(curTab(),'d1').desc") === "처음 설명");
+    E("doRedo()"); await wait(40);
+    E("sel={nodeIds:['d1'], edgeId:null}; openNodePanel();");   // 되돌리기가 선택을 풀어 놓는다
+    await wait(40);
+    de = doc.getElementById("npDesc");
+
+    /* 칸을 벗어나면 기다리지 않고 즉시 저장 */
+    de.value = "벗어나며 저장";
+    de.dispatchEvent(new w.Event("input", {bubbles:true}));
+    const b2 = E("(undoMap[activeTabId]||[]).length");
+    de.dispatchEvent(new w.Event("blur", {bubbles:true}));
+    await wait(40);
+    T("21-6 포커스를 잃으면 즉시 커밋", E("(undoMap[activeTabId]||[]).length") === b2 + 1 &&
+      E("nodeById(curTab(),'d1').desc") === "벗어나며 저장");
+
+    /* 보기 모드에서는 읽기 전용 */
+    E("setEditMode(false); renderNodePanel();");
+    await wait(20);
+    T("21-7 보기 모드에선 읽기 전용", doc.getElementById("npDesc").readOnly === true);
+    E("setEditMode(true);");
+
+    /* 목차: 더블클릭이면 상세까지 */
+    E("openPanel('list')");
+    await wait(40);
+    T("21-8 목차 열림", E("rpCur") === "list");
+    doc.querySelector('#tocBody [data-id="d2"]').dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(40);
+    T("21-9 한 번 클릭은 이동만(목차 유지)", E("sel.nodeIds.join(',')") === "d2" && E("rpCur") === "list");
+    doc.querySelector('#tocBody [data-id="d2"]').dispatchEvent(new w.MouseEvent("dblclick", {bubbles:true}));
+    await wait(50);
+    T("21-10 더블클릭이면 상세가 열림", E("rpCur") === "node" &&
+      doc.querySelector("#npHead .np-name").textContent === "아르카디아");
+
+    /* 목차 접기 */
+    E("openPanel('list')");
+    await wait(40);
+    const before2 = doc.querySelectorAll("#tocBody .toc-i").length;
+    T("21-11 접기 전 항목이 보임", before2 >= 2);
+    const head = [...doc.querySelectorAll("#tocBody .toc-h")].find(h => h.textContent.includes("인물"));
+    head.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(40);
+    T("21-12 타입 이름을 누르면 접힘", doc.querySelectorAll("#tocBody .toc-i").length < before2);
+    T("21-13 접힌 표시(▸)", [...doc.querySelectorAll("#tocBody .toc-cav")].some(e => e.textContent === "▸"));
+    T("21-14 다른 타입은 그대로", doc.querySelector('#tocBody [data-id="d2"]') !== null);
+    const head2 = [...doc.querySelectorAll("#tocBody .toc-h")].find(h => h.textContent.includes("인물"));
+    head2.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(40);
+    T("21-15 다시 누르면 펼쳐짐", doc.querySelectorAll("#tocBody .toc-i").length === before2);
+    /* 0.8초가 차기 전에 창을 닫아도 잃지 않는다 */
+    E("sel={nodeIds:['d1'], edgeId:null}; openNodePanel();");
+    await wait(40);
+    E("undoMap[activeTabId] = []; dirtyLocal = false;");
+    const de2 = doc.getElementById("npDesc");
+    de2.value = "닫기 직전 글자";
+    de2.dispatchEvent(new w.Event("input", {bubbles:true}));
+    w.dispatchEvent(new w.Event("beforeunload"));
+    await wait(30);
+    T("21-16 창을 닫으면 대기 중인 글자도 저장",
+      E("(undoMap[activeTabId]||[]).length") === 1 &&
+      E("nodeById(curTab(),'d1').desc") === "닫기 직전 글자");
+    E("closePanel();");
   }
 
   done();
