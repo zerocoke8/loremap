@@ -615,6 +615,13 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
 .sw.slate{background:#14161a;color:#e6e9ef}
 .sw svg{width:18px;height:18px}
 .sw svg{width:18px;height:18px;overflow:visible}
+.snap-row{display:flex;align-items:center;gap:10px;background:var(--bg3);
+  border:1px solid var(--border);border-radius:10px;padding:9px 12px}
+.snap-i{flex:1;min-width:0}
+.snap-w{font-size:13.5px;font-weight:600;color:var(--text)}
+.snap-m{font-size:11.5px;color:var(--text3);margin-top:2px}
+.snap-a{display:flex;gap:6px;flex:none}
+.snap-a .btn{font-size:12px;padding:4px 10px}
 .warnbox{
   background:rgba(224,92,122,.08);border:1px solid rgba(224,92,122,.35);
   border-radius:9px;padding:10px 12px;color:var(--danger);font-size:12.5px;
@@ -1513,7 +1520,171 @@ function exportCsv(){
   toast(`'${tab.title}' 을 CSV 로 저장했습니다 — 엑셀에서 바로 열립니다`);
 }
 
+/* ==================================================================
+ * §2-5 자동 저장본 — 되돌릴 수 없는 사고를 위한 안전망
+ *
+ * 되돌리기는 메모리 ${UNDO_MAX}단계라 새로고침에 통째로 사라지고, 편집은 commit() 마다
+ * Firebase 로 즉시 퍼진다. 그래서 전면 교체나 잘못 적용한 AI 제안을 물릴 방법이
+ * 사용자가 기억해서 누르는 💾 하나뿐이었다.
+ *
+ * IndexedDB 를 쓰는 이유: Worker 배포 없이 붙고, localStorage 를 안 건드려
+ * wm_tabs 와 용량을 다투지 않는다(그 다툼은 세계관 저장 실패로 이어진다).
+ * ⚠ 이 브라우저·이 주소 안에만 있다 — 기기를 넘는 보관은 💾 파일로 저장이 맡는다.
+ * ================================================================== */
+const SNAP_DB = 'loremap', SNAP_STORE = 'snaps', SNAP_KEEP = 10;
+const SNAP_DAY_KEY = 'wm_snapday';      // 하루 첫 실행을 가리는 표식
+
+function idbOpen(){
+  return new Promise(res => {
+    if(typeof indexedDB === 'undefined') return res(null);   // 없는 환경이면 조용히 끈다
+    let rq;
+    try{ rq = indexedDB.open(SNAP_DB, 1); }catch(_){ return res(null); }
+    rq.onupgradeneeded = () => {
+      const db = rq.result;
+      if(!db.objectStoreNames.contains(SNAP_STORE)) db.createObjectStore(SNAP_STORE, {keyPath:'id'});
+    };
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror   = () => res(null);
+    rq.onblocked = () => res(null);
+  });
+}
+/* 저장 계층만 여기 가둔다 — 정책(언제·몇 개)은 아래 함수들이 맡는다 */
+let snapStore = {
+  async all(){
+    const db = await idbOpen(); if(!db) return [];
+    return new Promise(res => {
+      let rq;
+      try{ rq = db.transaction(SNAP_STORE, 'readonly').objectStore(SNAP_STORE).getAll(); }
+      catch(_){ db.close(); return res([]); }
+      rq.onsuccess = () => { res(rq.result || []); db.close(); };
+      rq.onerror   = () => { res([]); db.close(); };
+    });
+  },
+  async put(rec){
+    const db = await idbOpen(); if(!db) return false;
+    return new Promise(res => {
+      let tx;
+      try{ tx = db.transaction(SNAP_STORE, 'readwrite'); tx.objectStore(SNAP_STORE).put(rec); }
+      catch(_){ db.close(); return res(false); }
+      tx.oncomplete = () => { res(true); db.close(); };
+      tx.onerror    = () => { res(false); db.close(); };
+      tx.onabort    = () => { res(false); db.close(); };
+    });
+  },
+  async del(id){
+    const db = await idbOpen(); if(!db) return false;
+    return new Promise(res => {
+      let tx;
+      try{ tx = db.transaction(SNAP_STORE, 'readwrite'); tx.objectStore(SNAP_STORE).delete(id); }
+      catch(_){ db.close(); return res(false); }
+      tx.oncomplete = () => { res(true); db.close(); };
+      tx.onerror    = () => { res(false); db.close(); };
+      tx.onabort    = () => { res(false); db.close(); };
+    });
+  }
+};
+
+const snapNodeCount = list => list.reduce((a, t) => a + (t.nodes || []).length, 0);
+/* 최신 것이 앞 */
+async function snapList(){
+  return (await snapStore.all()).sort((a, b) => (b.at || 0) - (a.at || 0));
+}
+async function makeSnapshot(why){
+  if(!tabs.length) return null;
+  const data = {tabs: tabs.map(cleanTab)};
+  const rec = {
+    id: 'sn' + Date.now() + '_' + Math.floor(Math.random() * 1e6),
+    at: Date.now(),
+    why: String(why || ''),
+    tabCount: data.tabs.length,
+    nodeCount: snapNodeCount(data.tabs),
+    data
+  };
+  if(!await snapStore.put(rec)) return null;
+  /* 오래된 것부터 버린다 — 실패해도 저장 자체는 이미 됐으니 넘어간다 */
+  const all = await snapList();
+  for(const r of all.slice(SNAP_KEEP)) await snapStore.del(r.id);
+  return rec;
+}
+/* 하루에 한 번만 — 앱을 열 때마다 쌓이면 열 개가 하루치가 된다 */
+async function snapshotOncePerDay(){
+  let today = '';
+  try{ today = new Date().toISOString().slice(0, 10); }catch(_){ return; }
+  let last = '';
+  try{ last = localStorage.getItem(SNAP_DAY_KEY) || ''; }catch(_){}
+  if(last === today) return;
+  try{ localStorage.setItem(SNAP_DAY_KEY, today); }catch(_){}
+  await makeSnapshot('오늘 첫 실행');
+}
+/* ⚠ 되돌리기는 applyImport 를 타므로 pushAllToFB() 가 돈다 —
+   서버와 다른 기기까지 그 시점으로 바뀐다. 확인창에 반드시 적는다. */
+function restoreSnapshot(rec){
+  if(!reqEdit()) return;
+  confirmModal({
+    title: '지난 저장본으로 되돌리기', danger: true, ok: '되돌리기',
+    html: `<b>${escHtml(snapWhen(rec.at))}</b> 시점으로 되돌립니다 ` +
+      `(탭 ${rec.tabCount}개 · 노드 ${rec.nodeCount}개).<br><br>` +
+      `<div class="warnbox">지금 내용은 <b>전부 이 시점으로 바뀝니다.</b><br>` +
+      `서버(Firebase)도 함께 되돌아가므로, 다른 기기에서 그 뒤에 한 작업도 사라집니다.<br>` +
+      `되돌리기 직전 상태는 저장본으로 한 장 남겨 둡니다.</div>`,
+    onOk: async () => {
+      await makeSnapshot('되돌리기 직전');   // 되돌린 게 잘못이어도 돌아올 수 있게
+      await applyImport(deepCopy(rec.data));
+      toast(`${snapWhen(rec.at)} 저장본으로 되돌렸습니다`);
+    }
+  });
+}
+async function openSnapModal(){
+  const ov = openModal({
+    title: '🕘 지난 저장본', wide: true,
+    body: `<div class="hint">이 브라우저 안에만 자동으로 남겨 둔 것입니다. ` +
+      `전면 교체 직전과 하루 첫 실행에 한 장씩, 최근 ${SNAP_KEEP}개까지 보관합니다.<br>` +
+      `기기를 바꾸거나 브라우저 데이터를 지우면 함께 사라지니, 오래 보관할 것은 💾 파일로 저장하세요.</div>` +
+      `<div id="snapList" style="display:flex;flex-direction:column;gap:8px;margin-top:10px">` +
+      `<div class="center"><div class="spin"></div>불러오는 중…</div></div>`,
+    footer: `<button class="btn" data-a="c">닫기</button>`
+  });
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  const box = ov.querySelector('#snapList');
+  const list = await snapList();
+  if(!ov.isConnected) return;                 // 불러오는 사이 닫혔다
+  if(!list.length){
+    box.innerHTML = '<div class="rp-empty">아직 저장본이 없습니다. ' +
+      '파일에서 불러오기나 가져오기를 하면 그 직전 상태가 자동으로 남습니다.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  list.forEach(rec => {
+    const row = document.createElement('div');
+    row.className = 'snap-row';
+    row.innerHTML =
+      `<div class="snap-i"><div class="snap-w">${escHtml(snapWhen(rec.at))}</div>` +
+      `<div class="snap-m">탭 ${rec.tabCount}개 · 노드 ${rec.nodeCount}개` +
+      `${rec.why ? ' · ' + escHtml(rec.why) : ''}</div></div>`;
+    const acts = document.createElement('div');
+    acts.className = 'snap-a';
+    acts.innerHTML = `<button class="btn eo" data-a="r">되돌리기</button>` +
+      `<button class="btn" data-a="f">파일로</button>`;
+    acts.querySelector('[data-a=f]').onclick = () => {
+      downloadText(`loremap-${snapWhen(rec.at).replace(/[: ]/g, '-')}.json`,
+        JSON.stringify(rec.data, null, 2));
+      toast('저장본을 파일로 내려받았습니다');
+    };
+    acts.querySelector('[data-a=r]').onclick = () => { closeModal(ov); restoreSnapshot(rec); };
+    row.appendChild(acts);
+    box.appendChild(row);
+  });
+}
+function snapWhen(at){
+  const d = new Date(at || 0);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ` +
+         `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 async function applyImport(parsed){
+  /* 바꾸기 전 상태를 남긴다 — 되돌리기는 새로고침을 못 넘긴다 */
+  await makeSnapshot('불러오기 직전');
   tabs = parsed.tabs.filter(Boolean).map(t => sanitizeTab(deepCopy(t)));
   tabs.forEach(t => {
     t.nodes = t.nodes.filter(n => !n._aiPreview);
@@ -5670,6 +5841,7 @@ function openSettings(){
           <button class="btn" id="stExport">💾 파일로 저장</button>
           <button class="btn" id="stCsv">📊 엑셀(CSV)로 내보내기</button>
           <button class="btn" id="stImport">📂 파일에서 불러오기</button>
+          <button class="btn" id="stSnaps">🕘 지난 저장본</button>
           <button class="btn eo" id="stImgClean">🧹 안 쓰는 이미지 정리</button>
         </div>
         <div class="hint">저장은 <b>loremap-export.json</b> 파일을 내려받습니다. 불러오기는 <b>모든 탭을 교체</b>하므로 편집 모드에서만 쓸 수 있습니다.</div>
@@ -5694,6 +5866,7 @@ function openSettings(){
   };
   ov.querySelector('#stExport').onclick = exportJson;
   ov.querySelector('#stCsv').onclick = exportCsv;
+  ov.querySelector('#stSnaps').onclick = openSnapModal;
   ov.querySelector('#stImgClean').onclick = cleanupImages;
   ov.querySelector('#stImport').onclick = () => {
     if(!editMode){ toast('불러오기는 모든 데이터를 덮어쓰므로 🔒 버튼으로 편집 모드에 들어간 뒤 사용할 수 있습니다', true); return; }
@@ -6099,6 +6272,9 @@ async function main(){
   updateModeUI();
   renderTabs(); renderAll(); zoomFit();
   if(fbReady) attachTab(activeTabId);
+
+  /* 하루에 한 장 — 첫 화면을 막지 않도록 기다리지 않는다 */
+  snapshotOncePerDay().catch(err => console.warn('자동 저장본 실패', err));
 
   /* §8-4: 자동 저장은 localStorage만 주기 실행. Firebase는 commit() 시 즉시 diff */
   setInterval(() => { if(dirtyLocal){ dirtyLocal = false; saveLocal(); } }, 1200);

@@ -20,7 +20,7 @@ README.md              배포 안내 (관리자용)
 
 ```bash
 npm install        # jsdom 하나뿐
-npm test           # 7개 파일 · 657개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
+npm test           # 7개 파일 · 679개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
 npm run check      # index.html 안의 스크립트 문법 검사
 ```
 
@@ -29,7 +29,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - **데이터 스키마**: Tab{id,title,nodes,edges,events,worldPrompt,nodeTypes,refImages}, Node{id,type,name,desc,x,y}, Edge{id,from,to,label,desc,isParent}, Event{id,time,body,order,who[]}. `gid()`='i'+카운터. 런타임 전용 필드는 `_exp`, `_aiPreview`, `_chat`이며 절대 저장하지 않는다(`cleanTab` 화이트리스트).
 - **타입 목록 정규화는 `normTypes()` 하나만 쓴다** — `sanitizeTab`·`cleanTab`·`metaFB`·meta 수신·`adoptServerTab` 다섯 자리가 같은 함수를 지나야 한다. 예전에 네 곳이 `{key,label}` 만 넘겨 `fields`(타입 기본 속성)가 새로고침을 못 넘겼다. 모양이 한 곳만 달라도 `metaKey` 가 어긋나 meta 를 무한 재전송한다.
 - **노드 타입은 탭 데이터**다(`Tab.nodeTypes = [{key,label,fields[]}]` — `fields` 는 그 타입 노드에 기본으로 깔아줄 속성 이름들, 배열 순서 = 상하위 단계, 색은 순서대로 자동 배정, 이모지 없음). 옛 상수 `TL/TI/TC/TYPES`는 없어졌고 `DEFAULT_TYPES`/`typeList/typeLabel/typeColors/typeKeyOr`가 대신한다. **`key`는 `node.type`에 저장되는 값이라 절대 바꾸지 않는다**(label만 변경). 기본 7종의 key(world…custom)는 기존 사용자 데이터 호환을 위해 유지한다.
-- **localStorage 키**: `wm_tabs` = `JSON.stringify({tabs})` 형식 고정. `wm_fbcfg`(수동 Firebase 설정), `wm_theme`, `wm_edgecolor`, `wm_edgeshape`, `wm_toc`(접어둔 목차 타입 key 배열), `wm_npsize`(설명·메모 칸 높이 `{desc,memo}`), `wm_lasttab`(마지막으로 보던 탭 id). 옛 키 `wm_k/wm_gk/wm_mh`는 더 이상 쓰지 않지만 지우지도 않는다. **화면 취향(테마·목차·칸 높이)만 넣는다 — 세계관 데이터는 `wm_tabs` 하나뿐이다.**
+- **localStorage 키**: `wm_snapday`(자동 저장본을 남긴 마지막 날짜). `wm_tabs` = `JSON.stringify({tabs})` 형식 고정. `wm_fbcfg`(수동 Firebase 설정), `wm_theme`, `wm_edgecolor`, `wm_edgeshape`, `wm_toc`(접어둔 목차 타입 key 배열), `wm_npsize`(설명·메모 칸 높이 `{desc,memo}`), `wm_lasttab`(마지막으로 보던 탭 id). 옛 키 `wm_k/wm_gk/wm_mh`는 더 이상 쓰지 않지만 지우지도 않는다. **화면 취향(테마·목차·칸 높이)만 넣는다 — 세계관 데이터는 `wm_tabs` 하나뿐이다.**
 - **Firebase 경로**: `worldmind/tabList[{id,title}]`, `worldmind/tabs/{tabId}/{meta{title,worldPrompt,_w}, nodes/{id}, edges/{id}, events/{id}}`. 모든 항목에 `_w`=세션 ID(`FB_SID`). 구 포맷 `worldmind/{tabs:[…]}`는 `migrateIfOld`가 자동 이전한다.
 - `sanitizeTab`은 모든 로드 경로가 통과해야 한다.
 
@@ -41,6 +41,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§1 데이터 스키마 상수` | 상수·`sanitizeTab`·`AI_MODEL`·`IMG_MODEL` |
 | `프록시 인증` | `getToken/setToken/clearToken`, `apiAuth`, `apiPost` (sessionStorage `wm_tok`) |
 | `§6-3 AI JSON 파싱` | `parseAIJson` 3단 방어 (직접 파싱 → 브래킷 추출 → 복구 → 부분 수집) |
+| `§2-5 자동 저장본` | `snapStore`(IndexedDB `loremap/snaps`)/`makeSnapshot`/`snapList`/`restoreSnapshot`/`openSnapModal`. 전면 교체 직전(`applyImport`)·하루 첫 실행·되돌리기 직전에 한 장씩, 최근 `SNAP_KEEP`(10)개. ⚙ 설정 → 🕘 지난 저장본 |
 | `§2-1 localStorage` | `loadLocal/saveLocal/commit/cleanTab`, export/import |
 | `§2-2 / §2-3 / §3 Firebase` | `initFB`, `migrateIfOld`, `attachTab`, `handleRemoteItem`, `fbSyncActive`(diff 전송), `pushAllToFB` |
 | `캔버스 뷰포트` / `렌더 파이프라인` | 팬·줌, `renderAll = renderNodes + renderEdges` (각 1회 원칙) |
@@ -113,6 +114,8 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - **`.prop-acts` 처럼 `.eo` 를 붙인 요소에 `display` 를 직접 쓰지 말 것.** `.eo{display:none}` 은 파일 위쪽(173행)에 있어 같은 특이도면 아래에 쓴 `display` 가 이겨, 보기 전용 방문자에게 편집 버튼이 그대로 보인다(실제 Chrome 에서 확인). `display` 는 `.eo` 규칙에 맡긴다.
 - **`applyTabSnapshot` 은 `_chat` 을 새 탭 객체로 옮겨준다.** `snapTab = cleanTab` 이라 스냅샷에 `_chat` 이 없고 `reviveTab` 이 객체를 통째로 새로 만들기 때문에, 옮기지 않으면 **추천 하나 수락 뒤 Ctrl+Z 한 번에 대화가 전멸한다.**
 - **참고 그림체(`refImages`)는 R2 참조라 AI 에 그대로 넘길 수 없다.** `callGemini` 는 `data:` URL 만 인라인으로 실을 수 있어서, `refImageParts()` 가 참조를 받아 `shrinkImage` 로 줄인 뒤 base64 로 바꾼다(원본은 20MB 까지라 반드시 줄인다). `callGemini(prompt, refs)` 의 `prompt` 에 **함수**를 주면 실제로 실린 장수를 받는다 — 한 장도 못 실었는데 "첨부한 그림체를 따르라"고 말하지 않도록 문구를 그 숫자에 묶을 것.
+- **자동 저장본은 IndexedDB 에 둔다 — localStorage 가 아니다.** `wm_tabs` 와 용량을 다투면 세계관 저장이 조용히 실패한다. 저장 계층은 `snapStore` 하나에 가둬 두었으니(테스트가 이것을 인메모리로 바꿔치기한다) 정책과 저장을 섞지 말 것. `indexedDB` 가 없거나 열리지 않으면 **조용히 꺼진다** — 앱이 죽으면 안 된다.
+- **`restoreSnapshot` 은 `applyImport` 를 타므로 `pushAllToFB()` 가 돈다** — 서버와 다른 기기까지 그 시점으로 바뀐다. 확인창에 반드시 적고, 되돌리기 **직전 상태를 한 장 더 남겨** 되돌린 게 잘못이어도 돌아올 수 있게 한다.
 - 이미지 바이트는 절대 localStorage·Firebase 에 넣지 말 것. base64 로 넣으면 5~10MB 에서 터진다. R2 에 두고 노드에는 참조만 남긴다. **읽기 엔드포인트는 토큰 게이트 앞**에 있어야 보기 전용 방문자도 그림을 본다.
 - 테마는 `THEMES`(dark·light·sepia·slate) 네 가지. 밝은 배경 계열 판정은 `LIGHT_THEMES` 를 쓸 것 — `curTheme === 'light'` 로 비교하면 세피아가 어두운 계열로 잘못 잡힌다.
 - **사건의 `who[]` 는 등장 노드 id 다.** `cleanWho()` 가 빈 값을 걸러 정렬해 **결정적**으로 만든다 — 순서가 흔들리면 Firebase 가 헛 diff 를 보낸다. `sanitizeTab`·`cleanEventLS`·`normFB('events')` 세 곳이 같은 모양을 내야 하고, 기본값은 반드시 `[]` 여야 한다(RTDB 는 빈 배열을 저장하지 않아 서버에서 `undefined` 로 돌아온다). 노드가 지워져도 사건은 남으므로 **읽을 때 `nodeById` 로 걸러 쓸 것.**

@@ -2236,5 +2236,131 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     E("closePanel(); clearSel();");
   }
 
+  /* ---- 34. 자동 저장본 ---- */
+  {
+    E("clearSel(); closePanel(); exitEventPick(); activeTabId = tabs[0].id;");
+    E("curTab().nodes.length=0; curTab().edges.length=0; curTab().events.length=0;");
+    E("curTab()._chat = null; curTab().title = '첫 세계';");
+    E("curTab().nodes.push(" +
+      "{id:'b1', type:'char', types:['char'], name:'원래 노드', desc:'', x:1000, y:1000});");
+    E("setEditMode(true); commit();");
+
+    /* jsdom 에는 IndexedDB 가 없다 — 저장 계층만 인메모리로 바꿔 정책을 본다 */
+    E("window.__snaps = [];");
+    E("snapStore = {" +
+      "async all(){ return window.__snaps.map(r => JSON.parse(JSON.stringify(r))); }," +
+      "async put(r){ window.__snaps = window.__snaps.filter(x => x.id !== r.id); " +
+      "  window.__snaps.push(JSON.parse(JSON.stringify(r))); return true; }," +
+      "async del(id){ const n = window.__snaps.length; " +
+      "  window.__snaps = window.__snaps.filter(x => x.id !== id); return n !== window.__snaps.length; }" +
+      "};");
+
+    /* --- 한 장 남기기 --- */
+    await new Promise(r => { E("makeSnapshot('테스트').then(() => window.__d = 1)"); 
+      const t = () => E("window.__d") ? r() : setTimeout(t, 10); t(); });
+    T("34-1 저장본이 한 장 생긴다", E("window.__snaps.length") === 1);
+    T("34-2 언제·왜·규모를 함께 적는다", (() => {
+      const r = JSON.parse(E("JSON.stringify(window.__snaps[0])"));
+      return r.why === "테스트" && r.tabCount === 1 && r.nodeCount === 1 && r.at > 0;
+    })());
+    T("34-3 내용은 저장 형식과 같다 — 런타임 필드가 안 실린다",
+      E("JSON.stringify(window.__snaps[0].data).indexOf('_exp')") === -1 &&
+      E("JSON.stringify(window.__snaps[0].data).indexOf('_chat')") === -1);
+
+    /* --- 상한 --- */
+    E("window.__snaps = [];");
+    for(let i = 0; i < 13; i++){
+      E("window.__d = 0;");
+      await new Promise(r => { E("makeSnapshot('반복').then(() => window.__d = 1)");
+        const t = () => E("window.__d") ? r() : setTimeout(t, 5); t(); });
+    }
+    T("34-4 최근 " + "SNAP_KEEP 개만 남긴다",
+      E("window.__snaps.length") === E("SNAP_KEEP"), E("window.__snaps.length"));
+    T("34-5 오래된 것부터 버린다", (() => {
+      const ats = JSON.parse(E("JSON.stringify(window.__snaps.map(r => r.at))"));
+      const listed = JSON.parse(E("JSON.stringify(window.__snaps.slice().sort((a,b)=>b.at-a.at).map(r=>r.at))"));
+      return Math.min(...ats) === Math.min(...listed);
+    })());
+
+    /* --- 목록은 최신이 앞 --- */
+    T("34-6 목록은 최신이 앞", (() => {
+      E("window.__snaps = [{id:'a',at:100,why:'',tabCount:1,nodeCount:1,data:{tabs:[]}}," +
+        "{id:'b',at:300,why:'',tabCount:1,nodeCount:1,data:{tabs:[]}}," +
+        "{id:'c',at:200,why:'',tabCount:1,nodeCount:1,data:{tabs:[]}}];");
+      E("window.__l = null; snapList().then(v => window.__l = v.map(r => r.id).join(','))");
+      return true;
+    })());
+    await new Promise(r => { const t = () => E("window.__l") ? r() : setTimeout(t, 10); t(); });
+    T("34-7 정렬 결과", E("window.__l") === "b,c,a", E("window.__l"));
+
+    /* --- 전면 교체 직전에 자동으로 --- */
+    E("window.__snaps = [];");
+    E("window.__d = 0; applyImport({tabs:[{id:'imp', title:'가져온 세계', nodes:[], edges:[], events:[], worldPrompt:''}]})" +
+      ".then(() => window.__d = 1);");
+    await new Promise(r => { const t = () => E("window.__d") ? r() : setTimeout(t, 15); t(); });
+    T("34-8 불러오기 직전 상태가 자동으로 남는다", E("window.__snaps.length") === 1 &&
+      E("window.__snaps[0].why") === "불러오기 직전");
+    T("34-9 남은 것은 바꾸기 전 내용", (() => {
+      const d = JSON.parse(E("JSON.stringify(window.__snaps[0].data)"));
+      return d.tabs[0].title === "첫 세계" && d.tabs[0].nodes[0].name === "원래 노드";
+    })());
+    T("34-10 실제로는 교체됐다", E("curTab().title") === "가져온 세계");
+
+    /* --- 되돌리기 --- */
+    E("window.__snaps[0].id = 'keep';");
+    E("restoreSnapshot(JSON.parse(JSON.stringify(window.__snaps[0])))");
+    await wait(40);
+    const dlg = [...doc.querySelectorAll(".ov .dlg-h span")].map(e => e.textContent);
+    T("34-11 되돌리기는 확인을 받는다", dlg.includes("지난 저장본으로 되돌리기"), dlg);
+    T("34-12 서버까지 되돌아간다고 경고한다", (() => {
+      const box = doc.querySelector(".ov .warnbox");
+      return box !== null && box.textContent.includes("서버") && box.textContent.includes("다른 기기");
+    })(), doc.querySelector(".ov .warnbox")?.textContent);
+    doc.querySelector(".ov [data-a=k]").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(120);
+    T("34-13 되돌리면 그 시점 내용으로", E("curTab().title") === "첫 세계" &&
+      E("curTab().nodes[0].name") === "원래 노드");
+    T("34-14 되돌리기 직전 상태도 한 장 남긴다",
+      E("window.__snaps.some(r => r.why === '되돌리기 직전')"),
+      E("JSON.stringify(window.__snaps.map(r => r.why))"));
+
+    /* --- 하루 한 번 --- */
+    E("window.__snaps = []; localStorage.removeItem('wm_snapday');");
+    E("window.__d = 0; snapshotOncePerDay().then(() => window.__d = 1);");
+    await new Promise(r => { const t = () => E("window.__d") ? r() : setTimeout(t, 10); t(); });
+    T("34-15 첫 실행이면 한 장", E("window.__snaps.length") === 1 &&
+      E("window.__snaps[0].why") === "오늘 첫 실행");
+    E("window.__d = 0; snapshotOncePerDay().then(() => window.__d = 1);");
+    await new Promise(r => { const t = () => E("window.__d") ? r() : setTimeout(t, 10); t(); });
+    T("34-16 같은 날 다시 열어도 더 안 쌓인다", E("window.__snaps.length") === 1);
+    T("34-17 날짜를 표식으로 남긴다",
+      /^\d{4}-\d{2}-\d{2}$/.test(E("localStorage.getItem('wm_snapday')") || ""));
+
+    /* --- IndexedDB 가 없는 환경에서도 앱이 죽지 않는다 --- */
+    T("34-18 저장소가 없으면 조용히 꺼진다", (() => {
+      E("window.__snapReal = snapStore; snapStore = {" +
+        "async all(){ return []; }, async put(){ return false; }, async del(){ return false; }};");
+      E("window.__d = 0; makeSnapshot('없음').then(v => window.__d = (v === null ? 2 : 1));");
+      return true;
+    })());
+    await new Promise(r => { const t = () => E("window.__d") ? r() : setTimeout(t, 10); t(); });
+    T("34-19 저장 실패는 null 을 돌려주고 예외를 던지지 않는다", E("window.__d") === 2);
+    E("snapStore = window.__snapReal;");
+
+    /* --- 시각 표기 --- */
+    T("34-20 시각을 사람이 읽는 모양으로",
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(E("snapWhen(Date.now())")), E("snapWhen(Date.now())"));
+
+    /* --- 설정에 버튼이 있다 --- */
+    E("[...modalsEl.querySelectorAll('.ov')].forEach(closeModal); openSettings();");
+    await wait(50);
+    T("34-21 설정에 지난 저장본 버튼", doc.getElementById("stSnaps") !== null &&
+      doc.getElementById("stSnaps").textContent.includes("지난 저장본"));
+    T("34-22 보기 전용도 목록은 볼 수 있다(되돌리기만 편집 전용)",
+      !doc.getElementById("stSnaps").classList.contains("eo"));
+    E("[...modalsEl.querySelectorAll('.ov')].forEach(closeModal);");
+    await wait(30);
+  }
+
   done();
 })();
