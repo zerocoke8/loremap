@@ -20,7 +20,7 @@ README.md              배포 안내 (관리자용)
 
 ```bash
 npm install        # jsdom 하나뿐
-npm test           # 7개 파일 · 267개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
+npm test           # 7개 파일 · 563개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
 npm run check      # index.html 안의 스크립트 문법 검사
 ```
 
@@ -57,7 +57,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§5-14 노드 검색` | `runSearch`/`stepSearch`/`centerOnNode`. `searchHits`+`searchIdx`+`searchQuery`(재검색·순회 구분). 강조는 `renderNodes` 가 `.found`/`.cur` 클래스로 |
 | `§5-15 선택 영역 복사` | `copySelection`/`pasteClip`(내부 버퍼 `clipBuf`), `copySelectionImage`(캔버스에 직접 그려 투명 PNG). 연결선은 화면 SVG 의 `d`(M x y Q …)를 그대로 재현한다 |
 | `§5-4 노드 자동 정렬` | `computeRadialLayout`, `tweenTo` |
-| `§6 AI 호출 헬퍼` | `callClaude/callGemini` → 모두 `apiPost`로 Worker 경유 |
+| `§6 AI 호출 헬퍼` | `callClaude(system, messages, maxTokens, opts)` / `callGemini` → 모두 `apiPost`로 Worker 경유. `opts.effort`로 사고 깊이를, `opts.label`로 계측 이름을 준다. 호출마다 `noteUsage`가 `aiUsage`(세션 누적 입력·출력·캐시·잘림 횟수)에 적재하고 콘솔에 남긴다 |
 | `§5-6 세계관 대화` | `renderChat`/`sendChat`. 기록은 `tab._chat`(런타임 전용) — **저장·동기화되지 않아 새로고침·되돌리기(`applyTabSnapshot` 이 탭 객체를 갈아끼운다)에 사라진다.** 매 턴 `worldSystem(tab)` 을 새로 만들어 시스템 프롬프트로 넣고 `_chat` 전체를 함께 보낸다(길이 상한 없음). 실패하면 마지막 사용자 메시지를 되돌려 입력칸에 되살린다 |
 | `§5-9 AI 노드 생성` / `§5-10 AI 추천` / `§5-8 주인공 방문` | AI 기능. 프롬프트는 `buildCtx/worldSystem` 재사용 |
 | `§5-1b 탭 주소` | `hashTarget`/`syncTabLocation`(`renderTabs` 가 매번 호출). 주소 `#2` = 두 번째 탭. GitHub Pages 는 정적이라 `/loremap/2` 경로는 404 가 되므로 `#` 뒤에 붙인다. 읽을 때는 순번·탭 id·탭 이름 셋 다 받고, 쓸 때는 순번을 쓴다. 첫 탭 결정 순서 = 주소 > `wm_lasttab` > 첫 탭 |
@@ -103,11 +103,15 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - 목록에는 있는데 `tabs/{id}`가 없는 탭을 곧바로 지우면 안 된다. 다른 기기가 방금 만들어 내용이 아직 안 올라온 정상 케이스와 구분되지 않는다. `watchTabUntilFilled`로 지켜보다 채우고, 삭제는 `sweepOrphanTabs`가 유예(`ORPHAN_GRACE_MS`) 후 재확인한 뒤 **편집 모드에서만** 한다. 보기 모드에서 로컬만 줄이면 다음 `fbSyncActive`가 그 축소된 목록을 서버에 밀어넣어 남의 탭을 지운다.
 - 타입 색은 CSS 클래스가 아니라 `renderNodes`가 노드마다 인라인 `--c`/`--c-bg`로 넣는다. 테마를 바꾸면 색을 다시 계산해야 하므로 `applyTheme`이 `renderAll()`을 부른다.
 - Firebase meta 스냅샷 키는 반드시 `metaKey()`(=`metaFB` 직렬화)를 쓸 것. 필드가 하나라도 어긋나면 meta 를 무한 재전송한다.
+- **Opus 5 는 `thinking` 을 생략하면 적응형 사고가 켜진다**(Opus 4.8/4.7 은 생략하면 꺼짐 — 세대가 바뀌며 기본값이 뒤집혔다). 기본 `effort` 는 `high` 이고, 사고 토큰은 **출력 요금으로 청구되면서 `max_tokens` 를 함께 먹는다.** 그래서 짧은 JSON 만 뽑는 기능은 `opts.effort:'low'` + 넉넉한 `max_tokens` 를 줘야 잘리지 않는다. `thinking` 은 Worker 화이트리스트에 **일부러 넣지 않았다** — Opus 5 에서 사고를 끄면 도구 호출이 본문으로 새는 알려진 실패 모드가 있고, 깊이 조절은 `effort` 로 충분하다.
+- **`buildCtx` 는 항상 `byMakeOrder` 로 정렬해 내보낸다.** 로컬은 배열 순서, Firebase 복원은 `objToArr` 의 키 순서(`i10` 이 `i2` 보다 앞)라 같은 내용이 다르게 직렬화된다. 지금은 목록 순서만 달라지지만, 프롬프트 캐싱을 켜면 이것 하나로 캐시가 통째로 날아간다.
+- **사건 본문 길이 상한은 `buildCtx`(프롬프트)에만 둔다(`EV_CTX_MAX`).** `cleanEventLS`/`sanitizeTab` 에서 자르면 저장할 때마다 사용자가 쓴 글이 영구히 잘려나간다 — 주인공 방문이 장면 전체를 사건으로 넣기 때문에 실제로 긴 본문이 존재한다.
+- **`applyTabSnapshot` 은 `_chat` 을 새 탭 객체로 옮겨준다.** `snapTab = cleanTab` 이라 스냅샷에 `_chat` 이 없고 `reviveTab` 이 객체를 통째로 새로 만들기 때문에, 옮기지 않으면 **추천 하나 수락 뒤 Ctrl+Z 한 번에 대화가 전멸한다.**
 - **참고 그림체(`refImages`)는 R2 참조라 AI 에 그대로 넘길 수 없다.** `callGemini` 는 `data:` URL 만 인라인으로 실을 수 있어서, `refImageParts()` 가 참조를 받아 `shrinkImage` 로 줄인 뒤 base64 로 바꾼다(원본은 20MB 까지라 반드시 줄인다). `callGemini(prompt, refs)` 의 `prompt` 에 **함수**를 주면 실제로 실린 장수를 받는다 — 한 장도 못 실었는데 "첨부한 그림체를 따르라"고 말하지 않도록 문구를 그 숫자에 묶을 것.
 - 이미지 바이트는 절대 localStorage·Firebase 에 넣지 말 것. base64 로 넣으면 5~10MB 에서 터진다. R2 에 두고 노드에는 참조만 남긴다. **읽기 엔드포인트는 토큰 게이트 앞**에 있어야 보기 전용 방문자도 그림을 본다.
 - 테마는 `THEMES`(dark·light·sepia·slate) 네 가지. 밝은 배경 계열 판정은 `LIGHT_THEMES` 를 쓸 것 — `curTheme === 'light'` 로 비교하면 세피아가 어두운 계열로 잘못 잡힌다.
 - 노드의 `tags`(소속)는 노드에만 붙는 꼬리표다. `nodeTypes` 와 무관하며 타입 목록에 들어가지 않는다.
-- `worker.js`는 요청 필드를 화이트리스트로만 전달한다. 새 API 파라미터가 필요하면 Worker와 클라이언트 양쪽을 함께 수정.
+- `worker.js`는 요청 필드를 화이트리스트로만 전달한다(`model`·`max_tokens`·`messages`·`system`·`temperature`·`output_config.effort`). 새 API 파라미터가 필요하면 Worker와 클라이언트 양쪽을 함께 수정. **`system` 은 문자열과 콘텐츠 블록 배열 둘 다 받는다** — 배열이어야 `cache_control` 을 붙일 수 있고, 예전에는 배열을 보내면 오류 없이 시스템 프롬프트가 통째로 사라졌다. `messages` 는 무검사 통과라 메시지 블록의 `cache_control` 은 Worker 수정 없이 그대로 간다.
 
 ## 배포
 

@@ -1733,5 +1733,82 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
       /stroke-dasharray/.test(ruleOf(".e-line.normal")));
   }
 
+  /* ---- 29. AI 호출: 사고 예산 · 순서 고정 · 계측 ---- */
+  {
+    E("clearSel(); closePanel(); activeTabId = tabs[0].id;");
+    E("curTab().nodes.length=0; curTab().edges.length=0; curTab().events.length=0;");
+    /* 만든 순서와 배열 순서를 일부러 어긋나게 넣는다 (Firebase 복원이 이렇게 만든다) */
+    E("curTab().nodes.push(" +
+      "{id:'i10', type:'char', types:['char'], name:'열번', desc:'', x:1000, y:1000}," +
+      "{id:'i2',  type:'char', types:['char'], name:'둘',   desc:'', x:1200, y:1000}," +
+      "{id:'i1',  type:'char', types:['char'], name:'하나', desc:'', x:1400, y:1000});");
+    E("curTab().edges.push(" +
+      "{id:'i20', from:'i1', to:'i2',  label:'가', desc:'', isParent:false}," +
+      "{id:'i3',  from:'i2', to:'i10', label:'나', desc:'', isParent:true});");
+    E("setEditMode(true); commit();");
+
+    /* 순서 고정 — 배열을 섞어도 프롬프트 문자열이 같아야 한다 */
+    const before = E("JSON.stringify(buildCtx(curTab()))");
+    E("curTab().nodes.reverse(); curTab().edges.reverse();");
+    const after = E("JSON.stringify(buildCtx(curTab()))");
+    T("29-1 배열 순서가 바뀌어도 컨텍스트가 같다", before === after);
+    T("29-2 만든 순서(i1,i2,i10)로 나열", E("buildCtx(curTab()).names.join(',')") === "하나,둘,열번",
+      E("buildCtx(curTab()).names.join(',')"));
+    T("29-3 관계도 같은 기준으로 정렬", E("buildCtx(curTab()).edgesStr.indexOf('나') < buildCtx(curTab()).edgesStr.indexOf('가')"),
+      E("buildCtx(curTab()).edgesStr"));
+
+    /* 사건 본문은 저장은 그대로, 프롬프트에서만 줄인다 */
+    E("curTab().events.push({id:'i30', time:'옛날', body:'가'.repeat(1200), order:10}); commit();");
+    T("29-4 프롬프트에 실을 때만 줄인다",
+      E("buildCtx(curTab()).eventsStr.length") < 700 &&
+      E("buildCtx(curTab()).eventsStr").endsWith("…"));
+    T("29-5 저장된 사건 본문은 그대로 1200자",
+      E("curTab().events[0].body.length") === 1200);
+    E("saveLocal();");
+    T("29-6 저장해도 잘리지 않는다",
+      JSON.parse(w.localStorage.getItem("wm_tabs")).tabs.find(t => t.id === E("activeTabId")).events[0].body.length === 1200);
+
+    /* 계측 — usage 를 버리지 않는다 */
+    T("29-7 사용량 집계가 존재한다", E("typeof aiUsage") === "object" &&
+      E("['calls','input','output','cacheRead','cacheWrite','truncated'].every(k => k in aiUsage)"));
+    E("aiUsage.calls=0; aiUsage.truncated=0; aiUsage.input=0; aiUsage.output=0;");
+    E("noteUsage({stop_reason:'end_turn', usage:{input_tokens:100, output_tokens:20, cache_read_input_tokens:80, cache_creation_input_tokens:5}}, '테스트');");
+    T("29-8 입력·출력·캐시를 각각 모은다",
+      E("aiUsage.calls") === 1 && E("aiUsage.input") === 100 && E("aiUsage.output") === 20 &&
+      E("aiUsage.cacheRead") === 80 && E("aiUsage.cacheWrite") === 5);
+    E("noteUsage({stop_reason:'max_tokens', usage:{input_tokens:1, output_tokens:2}}, '잘림');");
+    T("29-9 잘린 응답을 센다", E("aiUsage.truncated") === 1);
+    T("29-10 usage 가 없어도 호출 수는 센다", (() => {
+      E("noteUsage({stop_reason:'end_turn'}, 'usage 없음');");
+      return E("aiUsage.calls") === 3;
+    })());
+  }
+
+  /* ---- 30. 되돌리기가 대화를 지우지 않는다 ---- */
+  {
+    E("clearSel(); closePanel(); activeTabId = tabs[0].id;");
+    E("curTab().nodes.length=0; curTab().edges.length=0; curTab().events.length=0;");
+    E("curTab().nodes.push({id:'k1', type:'char', types:['char'], name:'처음', desc:'', x:1000, y:1000});");
+    E("setEditMode(true); commit();");
+    E("curTab()._chat = [{role:'user', content:'누가 왕이야?'}, {role:'assistant', content:'레온이다.'}];");
+
+    /* 추천 수락처럼 commit() 을 부르는 변경 한 번 */
+    E("nodeById(curTab(),'k1').name = '고침'; commit();");
+    T("30-1 편집해도 대화는 남는다", E("(curTab()._chat||[]).length") === 2);
+    E("doUndo()");
+    await wait(40);
+    T("30-2 되돌린 뒤에도 대화가 남는다", E("(curTab()._chat||[]).length") === 2,
+      E("JSON.stringify((curTab()._chat||[]).length)"));
+    T("30-3 내용도 그대로",
+      E("(curTab()._chat||[])[1] && (curTab()._chat||[])[1].content") === "레온이다.");
+    T("30-4 되돌리기 자체는 동작했다", E("nodeById(curTab(),'k1').name") === "처음");
+    E("doRedo()");
+    await wait(40);
+    T("30-5 다시하기 뒤에도 대화가 남는다", E("(curTab()._chat||[]).length") === 2);
+    T("30-6 대화는 저장에 실리지 않는다",
+      E("JSON.stringify(cleanTab(curTab())).indexOf('_chat')") === -1 &&
+      E("JSON.stringify(cleanTab(curTab())).indexOf('레온이다')") === -1);
+  }
+
   done();
 })();

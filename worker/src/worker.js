@@ -36,6 +36,7 @@
 
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;   // 12시간
 const MAX_TOKENS_CAP = 8192;
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];   // output_config.effort 허용값
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 const IMG_MAX_BYTES = 20 * 1024 * 1024;     // 노드 이미지는 축소해 보내지만 참고 그림체는 원본이라 넉넉히 잡는다
@@ -295,8 +296,13 @@ async function handleClaude(request, env, cors){
     max_tokens: Math.min(MAX_TOKENS_CAP, Math.max(1, Number(b.max_tokens) || 1024)),
     messages: b.messages
   };
-  if(typeof b.system === 'string') payload.system = b.system;
+  /* system 은 문자열 또는 콘텐츠 블록 배열 — 배열이어야 cache_control 을 붙일 수 있다.
+     예전에는 문자열만 받아, 배열을 보내면 오류 없이 시스템 프롬프트가 통째로 사라졌다. */
+  if(typeof b.system === 'string' || Array.isArray(b.system)) payload.system = b.system;
   if(typeof b.temperature === 'number') payload.temperature = b.temperature;
+  /* 사고 깊이 — 낮추면 사고 토큰이 줄어 짧은 응답이 잘리지 않는다 */
+  const eff = b.output_config && b.output_config.effort;
+  if(EFFORTS.includes(eff)) payload.output_config = {effort: eff};
 
   const headers = {
     'content-type':'application/json',

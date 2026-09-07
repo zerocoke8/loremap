@@ -80,6 +80,41 @@ T('ANTHROPIC_WORKSPACE_ID 설정 시 헤더 전달(공백 제거)', lastUpstream
   T('다중 워크스페이스 키 오류 → 한국어 안내로 변환', r.status === 400 && j.error.message.includes('ANTHROPIC_WORKSPACE_ID'));
   globalThis.fetch = saved;
 }
+/* 사고 깊이(effort) — Opus 5 는 thinking 을 생략하면 적응형 사고가 켜지고 기본 effort 가 high 다.
+   그 사고 토큰이 max_tokens 를 함께 먹어 짧은 JSON 응답이 잘렸다. */
+r = await call('/api/claude', {headers:H, body:{model:'claude-opus-5', messages:[{role:'user', content:'hi'}],
+  output_config:{effort:'low'}}});
+T('effort 를 업스트림에 전달', JSON.parse(lastUpstream.init.body).output_config?.effort === 'low');
+r = await call('/api/claude', {headers:H, body:{model:'claude-opus-5', messages:[{role:'user', content:'hi'}],
+  output_config:{effort:'터무니없음', other:'x'}}});
+T('허용값 밖 effort 는 버린다', !('output_config' in JSON.parse(lastUpstream.init.body)));
+r = await call('/api/claude', {headers:H, body:{model:'claude-opus-5', messages:[{role:'user', content:'hi'}],
+  output_config:{effort:'max', task_budget:{type:'tokens', total:99}}}});
+T('effort 만 통과 — 나머지 필드는 안 싣는다', (() => {
+  const oc = JSON.parse(lastUpstream.init.body).output_config;
+  return oc.effort === 'max' && Object.keys(oc).length === 1;
+})());
+r = await call('/api/claude', {headers:H, body:{model:'claude-opus-5', messages:[{role:'user', content:'hi'}],
+  thinking:{type:'disabled'}}});
+T('thinking 은 일부러 통과시키지 않는다', !('thinking' in JSON.parse(lastUpstream.init.body)));
+
+/* system 은 배열도 받아야 한다 — 배열이어야 cache_control 을 붙일 수 있고,
+   예전에는 배열을 보내면 오류 없이 시스템 프롬프트가 통째로 사라졌다. */
+const sysBlocks = [{type:'text', text:'큰 컨텍스트', cache_control:{type:'ephemeral'}}];
+r = await call('/api/claude', {headers:H, body:{model:'claude-opus-5', messages:[{role:'user', content:'hi'}],
+  system: sysBlocks}});
+T('system 배열을 그대로 전달(cache_control 포함)',
+  JSON.stringify(JSON.parse(lastUpstream.init.body).system) === JSON.stringify(sysBlocks));
+r = await call('/api/claude', {headers:H, body:{model:'claude-opus-5', messages:[{role:'user', content:'hi'}],
+  system: {type:'text'}}});
+T('문자열도 배열도 아닌 system 은 버린다', !('system' in JSON.parse(lastUpstream.init.body)));
+
+/* 메시지 블록의 cache_control 은 messages 무검사 통과라 그대로 간다 */
+const cachedMsg = [{role:'user', content:[{type:'text', text:'긴 글', cache_control:{type:'ephemeral'}}]}];
+r = await call('/api/claude', {headers:H, body:{model:'claude-opus-5', messages: cachedMsg}});
+T('메시지의 cache_control 도 그대로 전달',
+  JSON.stringify(JSON.parse(lastUpstream.init.body).messages) === JSON.stringify(cachedMsg));
+
 r = await call('/api/claude', {headers:H, body:{model:'gpt-x', messages:[]}});
 T('모델 ID 검증', r.status === 400);
 r = await call('/api/claude', {headers:H, body:{model:'claude-opus-4-6'}});
