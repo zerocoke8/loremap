@@ -1923,5 +1923,198 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     E("exitEventPick(); clearSel(); renderAll();");
   }
 
+  /* ---- 32. 대화 개편: 제안 → 적용 / 다시 / 무시 ---- */
+  {
+    E("clearSel(); closePanel(); exitEventPick(); activeTabId = tabs[0].id;");
+    E("curTab().nodes.length=0; curTab().edges.length=0; curTab().events.length=0;");
+    E("curTab().worldPrompt = ''; curTab()._chat = null;");
+    E("curTab().nodes.push(" +
+      "{id:'c1', type:'char', types:['char'], name:'레온', desc:'기사', x:1000, y:1000});");
+    E("setEditMode(true); commit(); renderAll();");
+
+    /* --- 파싱: 산문과 제안을 가른다 --- */
+    const fence = String.fromCharCode(96,96,96);
+    E("window.__reply = " + JSON.stringify(
+      "레온에게 소속이 없네요. 기사단을 하나 만들면 좋겠습니다.\n\n" +
+      "```json\n" +
+      "{\"proposals\":[" +
+      "{\"type\":\"node\",\"name\":\"은빛 기사단\",\"nodeType\":\"집단\",\"desc\":\"왕도를 지키는 기사단\",\"why\":\"레온의 소속이 없습니다\"}," +
+      "{\"type\":\"edge\",\"from\":\"레온\",\"to\":\"은빛 기사단\",\"label\":\"소속\",\"isParent\":true,\"why\":\"둘을 잇습니다\"}," +
+      "{\"type\":\"event\",\"time\":\"402년\",\"body\":\"기사단이 창설되었다.\",\"why\":\"연표가 비어 있습니다\"}" +
+      "]}\n" +
+      "```") + ";");
+    const sp = JSON.parse(E("JSON.stringify(splitProposals(window.__reply))"));
+    T("32-1 산문에서 JSON 블록을 떼어낸다",
+      sp.prose === "레온에게 소속이 없네요. 기사단을 하나 만들면 좋겠습니다." &&
+      sp.prose.indexOf(fence) === -1, sp.prose);
+    T("32-2 제안 세 개를 꺼낸다", sp.proposals.length === 3);
+    T("32-3 종류가 제대로", sp.proposals.map(p => p.type).join(",") === "node,edge,event");
+    T("32-4 제안 개수를 " + "PROP_MAX 로 자른다", E("PROP_MAX") === 3);
+    T("32-5 우리 형식이 아니면 글로 둔다", (() => {
+      const r = JSON.parse(E("JSON.stringify(splitProposals('그냥 답변'))"));
+      return r.proposals.length === 0 && r.prose === "그냥 답변";
+    })());
+    T("32-6 형식이 깨진 제안은 버린다", (() => {
+      E("window.__bad = '글\\n\\n' + " + JSON.stringify(fence) + " + 'json\\n{\"proposals\":[{\"type\":\"node\"},{\"type\":\"몰라\",\"name\":\"x\"},{\"type\":\"edge\",\"from\":\"가\",\"to\":\"가\"}]}\\n' + " + JSON.stringify(fence) + ";");
+      return JSON.parse(E("JSON.stringify(splitProposals(window.__bad).proposals)")).length === 0;
+    })());
+
+    /* --- 상태는 세계관을 보고 그때그때 판단한다 --- */
+    E("curTab()._chat = [{role:'user', content:'물어봄'}," +
+      "{role:'assistant', content:" + JSON.stringify("답변") + ", proposals: splitProposals(window.__reply).proposals}];");
+    E("openPanel('chat');");
+    await wait(50);
+    T("32-7 카드 세 장이 뜬다", doc.querySelectorAll("#chatLog .prop").length === 3);
+    T("32-8 아직 세계관에는 아무것도 안 들어갔다",
+      E("curTab().nodes.length") === 1 && E("curTab().edges.length") === 0 &&
+      E("curTab().events.length") === 0);
+    T("32-9 없는 노드를 가리키는 관계는 막아 두고 이유를 말한다", (() => {
+      const cards = [...doc.querySelectorAll("#chatLog .prop")];
+      const edge = cards[1];
+      return edge.className.includes("blocked") &&
+        edge.textContent.includes("은빛 기사단") && edge.textContent.includes("없습니다");
+    })(), [...doc.querySelectorAll("#chatLog .prop")][1].textContent.slice(0, 120));
+    T("32-10 막힌 제안에는 적용 버튼이 없다",
+      [...doc.querySelectorAll("#chatLog .prop")][1].querySelector('[data-pa="apply"]') === null);
+
+    /* --- 적용 --- */
+    doc.querySelector('#chatLog [data-pa="apply"]').dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(60);
+    T("32-11 노드가 실제로 추가된다", E("curTab().nodes.length") === 2 &&
+      E("curTab().nodes.some(n => n.name === '은빛 기사단')"));
+    T("32-12 타입 라벨을 key 로 바꿔 넣는다", (() => {
+      const n = JSON.parse(E("JSON.stringify(curTab().nodes.find(x => x.name === '은빛 기사단'))"));
+      return n.type === "group" && n.types[0] === "group";
+    })());
+    T("32-13 좌표가 기존 노드와 겹치지 않는다", (() => {
+      const n = JSON.parse(E("JSON.stringify(curTab().nodes.find(x => x.name === '은빛 기사단'))"));
+      return n.x !== 2000 || n.y !== 2000;
+    })());
+    await wait(40);
+    T("32-14 적용된 카드는 적용됨으로 바뀐다", (() => {
+      const cards = [...doc.querySelectorAll("#chatLog .prop")];
+      return cards[0].className.includes("done") && cards[0].textContent.includes("적용");
+    })());
+    T("32-15 노드가 생기니 관계 제안이 풀린다",
+      [...doc.querySelectorAll("#chatLog .prop")][1].querySelector('[data-pa="apply"]') !== null);
+
+    /* 이제 관계도 적용 */
+    [...doc.querySelectorAll('#chatLog [data-pa="apply"]')][0].dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(60);
+    T("32-16 관계가 이어진다", E("curTab().edges.length") === 1 &&
+      E("(function(){var e=curTab().edges[0];return e.isParent && nodeById(curTab(),e.from).name==='레온';})()"));
+
+    /* --- 되돌리기: 카드 상태가 따라온다 (저장하지 않고 매번 판단하므로) --- */
+    E("doUndo()"); await wait(50);
+    T("32-17 되돌리면 관계가 사라진다", E("curTab().edges.length") === 0);
+    E("renderChat()"); await wait(30);
+    T("32-18 카드도 다시 적용 가능해진다", (() => {
+      const cards = [...doc.querySelectorAll("#chatLog .prop")];
+      return !cards[1].className.includes("done") &&
+        cards[1].querySelector('[data-pa="apply"]') !== null;
+    })());
+    T("32-19 되돌려도 대화는 남는다", E("(curTab()._chat||[]).length") === 2);
+
+    /* --- 무시 --- */
+    const before = doc.querySelectorAll("#chatLog .prop").length;
+    doc.querySelector('#chatLog [data-pa="drop"]').dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(40);
+    T("32-20 무시하면 카드가 사라진다",
+      doc.querySelectorAll("#chatLog .prop").length === before - 1);
+    T("32-21 무시는 세계관을 건드리지 않는다", E("curTab().nodes.length") === 2);
+
+    /* --- 사건·설명 보강·세계관 설정 --- */
+    E("curTab()._chat = [{role:'assistant', content:'답', proposals:[" +
+      "{type:'event', time:'403년', body:'전쟁이 났다.', why:''}," +
+      "{type:'nodeEdit', name:'레온', desc:'북방의 기사', why:''}," +
+      "{type:'world', text:'철과 눈의 세계.', why:''}]}];");
+    E("renderChat()"); await wait(40);
+    const btns = [...doc.querySelectorAll('#chatLog [data-pa="apply"]')];
+    T("32-22 세 제안 모두 적용 가능", btns.length === 3);
+    btns[0].dispatchEvent(new w.MouseEvent("click", {bubbles:true})); await wait(50);
+    T("32-23 사건이 들어간다", E("curTab().events.length") === 1 &&
+      E("curTab().events[0].time") === "403년");
+    [...doc.querySelectorAll('#chatLog [data-pa="apply"]')][0].dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(50);
+    T("32-24 설명이 바뀐다", E("nodeByName(curTab(), '레온').desc") === "북방의 기사");
+    [...doc.querySelectorAll('#chatLog [data-pa="apply"]')][0].dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(50);
+    T("32-25 세계관 설정은 덮어쓰지 않고 덧붙인다",
+      E("curTab().worldPrompt") === "철과 눈의 세계.");
+    E("curTab().worldPrompt = '앞 문장.'; curTab()._chat[0].proposals[2]._gone = false;");
+    E("curTab()._chat = [{role:'assistant', content:'답', proposals:[{type:'world', text:'뒤 문장.', why:''}]}];");
+    E("renderChat()"); await wait(40);
+    doc.querySelector('#chatLog [data-pa="apply"]').dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(50);
+    T("32-26 기존 설정 뒤에 붙는다",
+      E("curTab().worldPrompt") === "앞 문장.\n\n뒤 문장.", E("JSON.stringify(curTab().worldPrompt)"));
+
+    /* --- 시스템 프롬프트는 대화 전용이어야 한다 --- */
+    T("32-27 대화 프롬프트에만 제안 규칙이 있다",
+      E("chatSystem(curTab()).includes('[제안 규칙]')") === true &&
+      E("worldSystem(curTab()).includes('[제안 규칙]')") === false);
+    T("32-28 타입 목록을 하드코딩하지 않고 탭에서 가져온다", (() => {
+      E("curTab().nodeTypes = [{key:'k1', label:'특이한타입', fields:[]}];");
+      const has = E("chatSystem(curTab()).includes('특이한타입')");
+      E("curTab().nodeTypes = DEFAULT_TYPES.map(x => ({...x}));");
+      return has === true;
+    })());
+
+    /* --- sendChat 을 실제로 태워 본다: 제안 JSON 이 대화 기록에 새면 안 된다 --- */
+    E("curTab()._chat = null; window.__realCC = callClaude;");
+    E("callClaude = async () => window.__reply;");   // 위에서 만든 산문+JSON 답변
+    E("openPanel('chat');"); await wait(30);
+    doc.getElementById("chatText").value = "기사단 이야기 좀";
+    doc.getElementById("chatSend").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(120);
+    const fence2 = String.fromCharCode(96,96,96);
+    const chat = JSON.parse(E("JSON.stringify(curTab()._chat)"));
+    T("32-29 대화 기록에 제안 JSON 이 남지 않는다",
+      chat.length === 2 && chat[1].content.indexOf(fence2) === -1 &&
+      chat[1].content.indexOf("proposals") === -1, chat[1] && chat[1].content.slice(0, 80));
+    T("32-30 산문만 화면에 뜬다",
+      [...doc.querySelectorAll("#chatLog .msg.a")].every(e => e.textContent.indexOf(fence2) === -1));
+    T("32-31 제안은 카드로 따로 붙는다",
+      (chat[1].proposals || []).length === 3 &&
+      doc.querySelectorAll("#chatLog .prop").length === 3);
+    E("callClaude = window.__realCC;");
+
+    /* --- 양쪽 끝 모두: 없는 노드는 이유를 밝히고 막는다 --- */
+    E("curTab()._chat = [{role:'assistant', content:'답', proposals:[" +
+      "{type:'edge', from:'없는쪽', to:'레온', label:'x', isParent:false, why:''}," +
+      "{type:'edge', from:'레온', to:'없는쪽', label:'x', isParent:false, why:''}," +
+      "{type:'nodeEdit', name:'없는쪽', desc:'새 설명', why:''}]}];");
+    E("renderChat()"); await wait(40);
+    const blocked = [...doc.querySelectorAll("#chatLog .prop")];
+    T("32-32 from 이 없으면 막고 그 이름을 말한다",
+      blocked[0].className.includes("blocked") && blocked[0].textContent.includes("없는쪽"));
+    T("32-33 to 가 없어도 막고 그 이름을 말한다",
+      blocked[1].className.includes("blocked") && blocked[1].textContent.includes("없는쪽"));
+    T("32-34 보강할 노드가 없어도 막는다",
+      blocked[2].className.includes("blocked") && blocked[2].textContent.includes("없는쪽"));
+    T("32-35 막힌 것에는 적용 버튼이 하나도 없다",
+      doc.querySelectorAll('#chatLog [data-pa="apply"]').length === 0);
+    T("32-36 조용히 버리지 않는다 — 카드는 그대로 세 장",
+      doc.querySelectorAll("#chatLog .prop").length === 3);
+
+    /* --- 적용 버튼은 편집 모드에서만 --- */
+    /* .prop-acts 에 display 를 쓰면 .eo{display:none} 을 같은 특이도로 이겨
+       보기 전용 방문자에게도 버튼이 보인다(실제 Chrome 에서 확인했다). */
+    const pcss = [...doc.querySelectorAll("style")].map(e => e.textContent).join("\n");
+    const propActs = (() => {
+      const i = pcss.indexOf(".prop-acts{");
+      return i < 0 ? "" : pcss.slice(i, pcss.indexOf("}", i));
+    })();
+    T("32-37 .prop-acts 는 display 를 정하지 않는다(.eo 에 맡긴다)",
+      propActs.length > 0 && !/display\s*:/.test(propActs), propActs);
+    T("32-38 버튼줄에 eo 가 붙어 있다", (() => {
+      E("curTab()._chat = [{role:'assistant', content:'답', proposals:[" +
+        "{type:'world', text:'무언가', why:''}]}]; renderChat();");
+      const a = doc.querySelector("#chatLog .prop-acts");
+      return a !== null && a.classList.contains("eo");
+    })());
+    E("closePanel(); curTab()._chat = null;");
+  }
+
   done();
 })();

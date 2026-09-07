@@ -491,6 +491,28 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .msg.u{align-self:flex-end;background:rgba(124,106,247,.16);border:1px solid rgba(124,106,247,.4);border-bottom-right-radius:4px}
 .msg.a{align-self:flex-start;background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:4px;color:var(--text2)}
 .msg.a.load{color:var(--text3);font-style:italic}
+/* 대화가 내놓은 제안 — 적용해야 세계관에 들어간다 */
+.props{align-self:flex-start;max-width:88%;display:flex;flex-direction:column;gap:7px;margin-top:-3px}
+.prop{background:var(--bg3);border:1px solid var(--border);border-radius:11px;padding:9px 11px}
+.prop.done{border-color:var(--ok, #4a9e6b);opacity:.72}
+.prop.blocked{border-style:dashed;opacity:.72}
+.prop-h{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.prop-b{font-size:10px;padding:1px 6px;border-radius:7px;border:1px solid var(--border2);
+  color:var(--text3);flex:none}
+.prop-t{font-size:13px;font-weight:600;color:var(--text);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prop-d{font-size:12.5px;color:var(--text2);line-height:1.6;white-space:pre-wrap;
+  word-break:keep-all;max-height:120px;overflow-y:auto}
+.prop-w{font-size:11.5px;color:var(--text3);margin-top:4px;line-height:1.5}
+/* display 는 .eo 가 정한다 — 여기서 display 를 쓰면 .eo{display:none} 을 이겨
+   보기 전용 방문자에게도 적용 버튼이 보인다 */
+.prop-acts{gap:6px;justify-content:flex-end;margin-top:7px}
+.prop-acts button{font-size:11.5px;padding:3px 9px;border-radius:9px;
+  border:1px solid var(--border2);color:var(--text2)}
+.prop-acts button:hover{color:var(--text);border-color:var(--accent2)}
+.prop-acts button.go{color:var(--gold2);border-color:var(--gold)}
+.prop-acts button.go:hover{background:rgba(212,169,71,.14)}
+.prop-note{font-size:11.5px;color:var(--text3);margin-top:6px}
 .chat-in{display:flex;gap:7px;padding:11px 13px;border-top:1px solid var(--border);align-items:flex-end}
 .chat-in textarea{flex:1;min-height:40px;max-height:120px}
 .chat-in button{flex:none;padding:9px 13px;border-radius:9px;background:var(--accent);color:#fff;font-size:13px;font-weight:500}
@@ -3779,6 +3801,32 @@ function buildCtx(tab){
   const names = liveNodes.map(n => n.name).filter(Boolean);
   return {nodesStr, edgesStr, eventsStr, names};
 }
+/* 대화 전용 — worldSystem 에 이어 붙이되 그 함수 자체는 건드리지 않는다.
+   (worldSystem 은 추천·노드 생성·주인공 방문까지 일곱 곳이 함께 쓴다) */
+const PROP_MAX = 3;
+function chatSystem(tab){
+  const labels = typeList(tab).map(t => t.label).join(', ');
+  return worldSystem(tab) + `\n
+[제안 규칙]
+답변은 평소처럼 한국어 산문으로 한다. 그 답변 안에 세계관에 실제로 넣을 만한 것이 있을 때만,
+답변 맨 끝에 \`\`\`json 코드펜스로 감싼 JSON 을 하나 덧붙인다. 넣을 것이 없으면 JSON 을 쓰지 않는다.
+사용자가 그냥 물어보기만 했다면 억지로 제안하지 마라.
+
+{"proposals":[ … 최대 ${PROP_MAX}개 … ]}
+
+각 제안은 다음 다섯 가지 중 하나다.
+- {"type":"node","name":"새 이름","nodeType":"타입","desc":"설명","why":"왜 필요한지 한 문장"}
+- {"type":"edge","from":"기존 이름","to":"기존 이름","label":"관계","isParent":true,"why":"…"}
+- {"type":"event","time":"시점","body":"사건 2~4문장","why":"…"}
+- {"type":"nodeEdit","name":"기존 이름","desc":"새 설명 전체","why":"…"}
+- {"type":"world","text":"세계관 설정에 덧붙일 문단","why":"…"}
+
+- from·to·nodeEdit 의 name 은 반드시 위 [노드 목록] 에 있는 이름을 그대로 쓴다. 없는 이름을 쓰면 적용되지 않는다.
+- type:"node" 일 때만 새 이름을 만든다. 이미 있는 이름이면 대신 nodeEdit 을 쓴다.
+- nodeType 은 다음 중 하나: ${labels}
+- isParent 는 소속·포함 같은 상하위 관계일 때만 true.`;
+}
+
 function worldSystem(tab){
   const c = buildCtx(tab);
   return `너는 창작 세계관 구축을 돕는 어시스턴트다. 아래는 사용자가 만들고 있는 세계관의 현재 정보다. 한국어로 답한다.
@@ -4305,15 +4353,182 @@ function renderChat(){
   if(!tab._chat) tab._chat = [];
   chatLogEl.innerHTML = '';
   if(!tab._chat.length){
-    chatLogEl.innerHTML = '<div class="empty">세계관에 대해 무엇이든 물어보세요.<br>설정·노드·관계·사건을 모두 알고 답합니다.</div>';
+    chatLogEl.innerHTML = '<div class="empty">세계관에 대해 무엇이든 물어보세요.<br>설정·노드·관계·사건을 모두 알고 답합니다.<br><br>넣을 만한 것이 나오면 카드로 제안하고,<br>＋ 적용을 눌러야 세계관에 들어갑니다.</div>';
   }
-  tab._chat.forEach(m => {
-    const el = document.createElement('div');
-    el.className = 'msg ' + (m.role === 'user' ? 'u' : 'a');
-    el.textContent = m.content;
-    chatLogEl.appendChild(el);
+  tab._chat.forEach((m, mi) => {
+    if(m.content){
+      const el = document.createElement('div');
+      el.className = 'msg ' + (m.role === 'user' ? 'u' : 'a');
+      el.textContent = m.content;
+      chatLogEl.appendChild(el);
+    }
+    const live = (m.proposals || []).filter(p => !p._gone);
+    if(!live.length) return;
+    const box = document.createElement('div');
+    box.className = 'props';
+    live.forEach(p => {
+      const pi = m.proposals.indexOf(p);
+      const st = proposalState(tab, p);
+      const card = document.createElement('div');
+      card.className = 'prop' + (st.done ? ' done' : (st.can ? '' : ' blocked'));
+      card.innerHTML =
+        `<div class="prop-h"><span class="prop-b">${escHtml(PROP_KINDS[p.type])}</span>` +
+        `<span class="prop-t">${escHtml(proposalTitle(p))}</span></div>` +
+        `<div class="prop-d">${escHtml(proposalBody(p))}</div>` +
+        (p.why ? `<div class="prop-w">${escHtml(p.why)}</div>` : '') +
+        (st.done ? '<div class="prop-note">✓ 적용되어 있습니다</div>'
+                 : (st.can ? '' : `<div class="prop-note">⚠ ${escHtml(st.why)}</div>`));
+      const acts = document.createElement('div');
+      acts.className = 'prop-acts eo';
+      acts.innerHTML =
+        (st.can ? `<button class="go" data-pa="apply" data-m="${mi}" data-p="${pi}">＋ 적용</button>` : '') +
+        `<button data-pa="again" data-m="${mi}" data-p="${pi}">↻ 다시</button>` +
+        `<button data-pa="drop" data-m="${mi}" data-p="${pi}">무시</button>`;
+      card.appendChild(acts);
+      box.appendChild(card);
+    });
+    chatLogEl.appendChild(box);
   });
   chatLogEl.scrollTop = chatLogEl.scrollHeight;
+}
+
+/* 답변에서 마지막 코드펜스를 떼어 제안을 꺼낸다. 산문만 화면과 대화 기록에 남는다. */
+function splitProposals(text){
+  const raw = String(text ?? '');
+  const m = /\u0060\u0060\u0060(?:json)?\s*([\s\S]*?)\u0060\u0060\u0060\s*$/i.exec(raw);
+  if(!m) return {prose: raw.trim(), proposals: []};
+  const parsed = parseAIJson(m[1], 'object');
+  const arr = parsed && Array.isArray(parsed.proposals) ? parsed.proposals : null;
+  if(!arr) return {prose: raw.trim(), proposals: []};   /* 우리 형식이 아니면 그냥 글로 둔다 */
+  const props = arr.map(normProposal).filter(Boolean).slice(0, PROP_MAX);
+  return {prose: raw.slice(0, m.index).trim(), proposals: props};
+}
+const PROP_KINDS = {node:'노드', edge:'관계', event:'사건', nodeEdit:'설명 보강', world:'세계관 설정'};
+function normProposal(p){
+  if(!p || !PROP_KINDS[p.type]) return null;
+  const t = String(p.type);
+  const str = (v, n) => String(v ?? '').trim().slice(0, n);
+  const why = str(p.why, 200);
+  if(t === 'node'){
+    const name = str(p.name, 60); if(!name) return null;
+    return {type:t, name, nodeType: str(p.nodeType, 20), desc: str(p.desc, 2000), why};
+  }
+  if(t === 'edge'){
+    const from = str(p.from, 60), to = str(p.to, 60);
+    if(!from || !to || from === to) return null;
+    return {type:t, from, to, label: str(p.label, 20), isParent: !!p.isParent, why};
+  }
+  if(t === 'event'){
+    const body = str(p.body, 2000); if(!body) return null;
+    return {type:t, time: str(p.time, 40), body, why};
+  }
+  if(t === 'nodeEdit'){
+    const name = str(p.name, 60), desc = str(p.desc, 2000);
+    if(!name || !desc) return null;
+    return {type:t, name, desc, why};
+  }
+  const text = str(p.text, 2000); if(!text) return null;
+  return {type:'world', text, why};
+}
+function proposalTitle(p){
+  if(p.type === 'node')     return p.name;
+  if(p.type === 'edge')     return `${p.from} ${p.isParent ? '⊃' : '↔'} ${p.to}`;
+  if(p.type === 'event')    return p.time || '시점 미상';
+  if(p.type === 'nodeEdit') return p.name;
+  return '세계관 설정에 덧붙이기';
+}
+function proposalBody(p){
+  if(p.type === 'node')     return p.desc || '(설명 없음)';
+  if(p.type === 'edge')     return p.label || '관계';
+  if(p.type === 'event')    return p.body;
+  if(p.type === 'nodeEdit') return p.desc;
+  return p.text;
+}
+const nodeByName = (tab, nm) => tab.nodes.find(n => !n._aiPreview && (n.name || '').trim() === nm);
+
+/* 상태는 저장하지 않고 그때그때 세계관을 보고 판단한다 —
+   그래야 Ctrl+Z 로 되돌렸을 때 카드가 '적용됨' 인 채로 남지 않는다. */
+function proposalState(tab, p){
+  if(!tab) return {can:false, done:false, why:'탭이 없습니다'};
+  if(p.type === 'node'){
+    return nodeByName(tab, p.name)
+      ? {can:false, done:true, why:'이미 있는 노드입니다'}
+      : {can:true, done:false, why:''};
+  }
+  if(p.type === 'edge'){
+    const f = nodeByName(tab, p.from), t = nodeByName(tab, p.to);
+    if(!f) return {can:false, done:false, why:`'${p.from}' 노드가 없습니다`};
+    if(!t) return {can:false, done:false, why:`'${p.to}' 노드가 없습니다`};
+    const dup = tab.edges.some(e => !e._aiPreview && e.from === f.id && e.to === t.id);
+    return dup ? {can:false, done:true, why:'이미 이어져 있습니다'} : {can:true, done:false, why:''};
+  }
+  if(p.type === 'event'){
+    const on = p._id && tab.events.some(e => e.id === p._id);
+    return on ? {can:false, done:true, why:''} : {can:true, done:false, why:''};
+  }
+  if(p.type === 'nodeEdit'){
+    const n = nodeByName(tab, p.name);
+    if(!n) return {can:false, done:false, why:`'${p.name}' 노드가 없습니다`};
+    return (n.desc || '') === p.desc
+      ? {can:false, done:true, why:''} : {can:true, done:false, why:''};
+  }
+  return String(curTab()?.worldPrompt || '').includes(p.text)
+    ? {can:false, done:true, why:''} : {can:true, done:false, why:''};
+}
+
+/* 적용은 반드시 commit() 으로 끝낸다 — 그래야 Ctrl+Z 한 번으로 물릴 수 있다 */
+function applyProposal(p){
+  if(!reqEdit()) return;
+  const tab = curTab(); if(!tab) return;
+  const st = proposalState(tab, p);
+  if(!st.can){ toast(st.why || '이미 적용되었습니다', true); return; }
+  if(p.type === 'node'){
+    const key = typeKeyOr(tab, p.nodeType);
+    /* type 과 types[0] 은 항상 같아야 한다 — sanitizeTab 은 로드 때만 돈다 */
+    const nn = {id:gid(), type:key, types:[key], name:p.name, desc:p.desc,
+                x:2000, y:2000, _exp:false};
+    tab.nodes.push(nn);
+    layoutImported([nn], [], freeOrigin(tab));
+    sel = {nodeIds:[nn.id], edgeId:null}; topNodeId = nn.id;
+    commit(); renderAll(); centerOnNode(nn.id);
+    toast(`노드 '${p.name}' 을 추가했습니다 — Ctrl+Z 로 되돌릴 수 있습니다`);
+  }else if(p.type === 'edge'){
+    const f = nodeByName(tab, p.from), t = nodeByName(tab, p.to);
+    tab.edges.push({id:gid(), from:f.id, to:t.id, label:p.label, desc:'', isParent:p.isParent});
+    commit(); renderAll();
+    toast(`'${p.from}' 과 '${p.to}' 를 이었습니다`);
+  }else if(p.type === 'event'){
+    const ev = {id:gid(), time:p.time, body:p.body, order:maxOrder(tab) + 10};
+    tab.events.push(ev);
+    p._id = ev.id;
+    commit();
+    if(rpCur === 'events') renderEvents();
+    toast('사건 연표에 추가했습니다');
+  }else if(p.type === 'nodeEdit'){
+    const n = nodeByName(tab, p.name);
+    n.desc = p.desc;
+    commit(); renderAll();
+    if(rpCur === 'node') renderNodePanel();
+    toast(`'${p.name}' 의 설명을 바꿨습니다`);
+  }else{
+    const cur = String(tab.worldPrompt || '').trim();
+    tab.worldPrompt = (cur ? cur + '\n\n' : '') + p.text;   /* 덮어쓰지 않고 덧붙인다 */
+    commit();
+    if(rpCur === 'world') renderWorldPanel();
+    toast('세계관 설정에 덧붙였습니다');
+  }
+  renderChat();
+}
+
+/* 이 제안 말고 다른 안을 달라고 한 턴 더 묻는다.
+   사용자 메시지로 남겨야 모델이 무엇을 물렸는지 다음 턴에도 안다. */
+function askAgain(p){
+  const tab = curTab(); if(!tab) return;
+  p._gone = true;
+  const ta = $('#chatText');
+  ta.value = `방금 제안한 「${proposalTitle(p)}」 는 마음에 들지 않습니다. ` +
+    `같은 자리에 들어갈 다른 안을 하나만 다시 제안해 주세요.`;
+  sendChat();
 }
 
 async function sendChat(){
@@ -4334,12 +4549,14 @@ async function sendChat(){
   btn.disabled = true;
   try{
     const reply = await callClaude(
-      worldSystem(tab),
+      chatSystem(tab),
       tab._chat.map(m => ({role:m.role, content:m.content})),
       4000,
       {label:'세계관 대화'}          // 창작 답변이라 effort 는 기본값(high) 유지
     );
-    tab._chat.push({role:'assistant', content:reply.trim()});
+    /* 제안 JSON 은 화면에도 대화 기록에도 남기지 않는다 — 카드로만 보여준다 */
+    const {prose, proposals} = splitProposals(reply);
+    tab._chat.push({role:'assistant', content:prose, proposals});
   }catch(err){
     tab._chat.pop();                      // 실패한 질문 롤백
     ta.value = text;
@@ -5582,6 +5799,16 @@ function bindStaticUI(){
     e.target.value = '';
   });
   $('#chatSend').onclick = sendChat;
+  /* 카드가 매번 새로 그려지므로 위임으로 받는다 */
+  chatLogEl.addEventListener('click', e => {
+    const b = e.target.closest('[data-pa]'); if(!b) return;
+    const tab = curTab(); if(!tab || !tab._chat) return;
+    const m = tab._chat[+b.dataset.m]; if(!m || !m.proposals) return;
+    const p = m.proposals[+b.dataset.p]; if(!p) return;
+    if(b.dataset.pa === 'apply') applyProposal(p);
+    else if(b.dataset.pa === 'drop'){ p._gone = true; renderChat(); }
+    else askAgain(p);
+  });
   $('#chatText').addEventListener('keydown', e => {
     if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendChat(); }
   });
