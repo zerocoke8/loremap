@@ -209,7 +209,10 @@ body.edit div.eo,body.edit span.eo{display:flex}
   min-width:120px;max-width:240px;
   border:1.5px solid var(--c, var(--border2));border-radius:12px;
   /* backdrop-filter 는 겹친 카드 뒤를 뿌옇게 만들어 읽기 어려웠다 — 제거 */
-  background:var(--c-bg, var(--surface));
+  /* 카드는 항상 불투명하다. 타입 색조를 불투명한 바탕 위에 얹어 색은 그대로 두면서
+     뒤를 가린다. 반투명이면 카드 뒤로 지나가는 연결선이 비쳐,
+     선이 카드 위에 그려진 것처럼 보인다(선 자체는 늘 #edgeSvg 라 아래에 있다). */
+  background:linear-gradient(var(--c-bg, var(--surface)), var(--c-bg, var(--surface))), var(--bg2);
   z-index:1;
   box-shadow:var(--shadow-sm);
   padding:9px 12px;cursor:pointer;user-select:none;
@@ -237,12 +240,8 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .node.exp{z-index:3}
 .node.exp.sel{z-index:4}
 .node.top{z-index:6}                     /* 마지막으로 건드린 카드가 무조건 위 */
-/* 펼치거나 선택한 카드는 불투명하게 — 반투명이면 겹친 글씨가 비쳐 읽기 어렵다.
-   타입 색조를 불투명한 바탕 위에 얹어 색은 유지하면서 뒤를 가린다. */
-.node.exp, .node.sel, .node.top{
-  background:linear-gradient(var(--c-bg, var(--surface)), var(--c-bg, var(--surface))), var(--bg2);
-  box-shadow:var(--shadow-sm),0 6px 24px rgba(0,0,0,.28)
-}
+/* 불투명 처리는 .node 로 옮겼다 — 여기서는 떠 보이는 그림자만 더한다 */
+.node.exp, .node.sel, .node.top{box-shadow:var(--shadow-sm),0 6px 24px rgba(0,0,0,.28)}
 .node.sel{border-color:var(--accent2)}
 .node.sel{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(165,148,255,.45),0 0 22px rgba(124,106,247,.35)}
 .node.preview .nn{font-weight:700}
@@ -271,7 +270,8 @@ body.edit div.eo,body.edit span.eo{display:flex}
 .e-detail{
   position:absolute;pointer-events:auto;touch-action:none;transform:translate(-50%,-50%);
   min-width:160px;max-width:270px;
-  background:var(--glass);border:1px solid var(--ec, var(--accent2));border-radius:11px;
+  /* 노드 카드와 같은 이유로 불투명하게 — 뒤의 선이 비치면 글을 읽기 어렵다 */
+  background:var(--bg2);border:1px solid var(--ec, var(--accent2));border-radius:11px;
   padding:10px 13px;box-shadow:var(--shadow),0 0 18px rgba(124,106,247,.3);
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);cursor:default;user-select:none;
 }

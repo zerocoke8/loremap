@@ -1686,5 +1686,52 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
       JSON.parse(E("window.__sent")).contents[0].parts[0]?.text === "그냥 문자열");
   }
 
+  /* ---- 28. 연결선은 항상 노드 카드 아래 ---- */
+  {
+    /* 쌓임 순서: #edgeSvg 가 #nodes 보다 먼저 오고 .node 는 양수 z-index 라
+       선은 언제나 카드 뒤에 그려진다. 그런데 카드가 반투명이면 그 선이 그대로 비쳐
+       선이 위에 있는 것처럼 보인다 — 실제 Chrome 에서 라이트 테마 카드가 알파 0.15 였다. */
+    const css = [...doc.querySelectorAll("style")].map(e => e.textContent).join("\n");
+    const ruleOf = sel => {
+      const i = css.indexOf(sel + "{");
+      return i < 0 ? "" : css.slice(i, css.indexOf("}", i));
+    };
+
+    /* 구조 — 선 레이어가 노드 레이어보다 앞(=아래) */
+    const world = doc.getElementById("world");
+    const kids = [...world.children].map(e => e.id);
+    T("28-1 선 레이어가 노드 레이어보다 먼저",
+      kids.indexOf("edgeSvg") >= 0 && kids.indexOf("edgeSvg") < kids.indexOf("nodes"), kids);
+    T("28-2 노드는 양수 z-index 라 선 레이어보다 위",
+      /z-index:\s*([1-9]\d*)/.test(ruleOf(".node")), ruleOf(".node").slice(0, 200));
+    T("28-3 선 레이어에는 z-index 를 주지 않는다(주면 노드를 덮을 수 있다)",
+      !/z-index/.test(ruleOf("#edgeSvg")));
+
+    /* 카드는 불투명해야 뒤의 선이 안 비친다 */
+    T("28-4 보통 카드도 불투명한 바탕 위에 색조를 얹는다",
+      /background:\s*linear-gradient\(var\(--c-bg[^)]*\)[^;]*var\(--bg2\)/.test(ruleOf(".node")),
+      ruleOf(".node").slice(0, 260));
+    T("28-5 반투명 배경으로 되돌아가지 않았다",
+      !/background:\s*var\(--c-bg/.test(ruleOf(".node")));
+    T("28-6 관계 상세 카드도 불투명",
+      /background:\s*var\(--bg2\)/.test(ruleOf(".e-detail")), ruleOf(".e-detail").slice(0, 200));
+
+    /* 실제로 그려 보고 선이 노드 레이어로 새지 않는지 */
+    E("clearSel(); closePanel(); activeTabId = tabs[0].id;");
+    E("curTab().nodes.length=0; curTab().edges.length=0;");
+    E("curTab().nodes.push(" +
+      "{id:'L1', type:'char', types:['char'], name:'가', desc:'', x:1000, y:1000}," +
+      "{id:'L2', type:'char', types:['char'], name:'나', desc:'', x:1600, y:1000});");
+    E("curTab().edges.push({id:'LE', from:'L1', to:'L2', label:'관계', desc:'', isParent:false});");
+    E("setEditMode(true); commit(); renderAll();");
+    await wait(60);
+    T("28-7 선과 라벨은 전부 선 레이어 안에",
+      doc.querySelectorAll("#edgeSvg .e-line").length === 1 &&
+      doc.querySelectorAll("#nodes .e-line, #nodes .e-lbl, #nodes svg").length === 0);
+    T("28-8 일반 관계는 점선, 상하위는 실선",
+      doc.querySelector("#edgeSvg .e-line").classList.contains("normal") &&
+      /stroke-dasharray/.test(ruleOf(".e-line.normal")));
+  }
+
   done();
 })();

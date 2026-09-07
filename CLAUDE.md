@@ -58,6 +58,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§5-15 선택 영역 복사` | `copySelection`/`pasteClip`(내부 버퍼 `clipBuf`), `copySelectionImage`(캔버스에 직접 그려 투명 PNG). 연결선은 화면 SVG 의 `d`(M x y Q …)를 그대로 재현한다 |
 | `§5-4 노드 자동 정렬` | `computeRadialLayout`, `tweenTo` |
 | `§6 AI 호출 헬퍼` | `callClaude/callGemini` → 모두 `apiPost`로 Worker 경유 |
+| `§5-6 세계관 대화` | `renderChat`/`sendChat`. 기록은 `tab._chat`(런타임 전용) — **저장·동기화되지 않아 새로고침·되돌리기(`applyTabSnapshot` 이 탭 객체를 갈아끼운다)에 사라진다.** 매 턴 `worldSystem(tab)` 을 새로 만들어 시스템 프롬프트로 넣고 `_chat` 전체를 함께 보낸다(길이 상한 없음). 실패하면 마지막 사용자 메시지를 되돌려 입력칸에 되살린다 |
 | `§5-9 AI 노드 생성` / `§5-10 AI 추천` / `§5-8 주인공 방문` | AI 기능. 프롬프트는 `buildCtx/worldSystem` 재사용 |
 | `§5-1b 탭 주소` | `hashTarget`/`syncTabLocation`(`renderTabs` 가 매번 호출). 주소 `#2` = 두 번째 탭. GitHub Pages 는 정적이라 `/loremap/2` 경로는 404 가 되므로 `#` 뒤에 붙인다. 읽을 때는 순번·탭 id·탭 이름 셋 다 받고, 쓸 때는 순번을 쓴다. 첫 탭 결정 순서 = 주소 > `wm_lasttab` > 첫 탭 |
 | `§5-1 탭 관리` / `§5-11 편집 모드` / `테마` / `§5-13 설정` / `정적 UI 바인딩` / `main()` | 앱 셸 |
@@ -83,6 +84,8 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - **`rememberNpSize` 는 저장값을 지우면 안 된다.** `ResizeObserver.observe()` 는 붙는 즉시 한 번 발화하고 창 `mouseup` 은 아무 데서나 오므로, 두 칸이 아직 안 그려져 인라인 높이가 빈 순간에 불린다. 그때 `next` 를 `{}` 에서 시작하면 `wm_npsize` 를 통째로 날려 **새로고침마다 높이가 사라진다**. 반드시 `{...npSize}` 에서 시작해 덮어쓰기만 할 것.
 - **`resize` 손잡이 드래그의 끝은 `mouseup` 이 그 요소에 오지 않는다.** 브라우저는 리사이즈 중 포인터를 묶어두지 않아서, `resize:vertical` 인 칸은 가로로 4px 만 흘러도 `mouseup` 이 부모에 떨어진다(실제 Chrome 확인). textarea 에 직접 걸지 말고 `window` 에서 받을 것(`rememberNpSize`). jsdom 테스트가 `mouseup` 을 요소에 직접 쏘면 이 누수를 못 잡는다 — 바깥 요소에 쏴서 검증할 것.
 - 패널 헤더 `.rp-h`는 모든 패널이 공유한다. 거기 둔 버튼(`#npEdit`)은 `openPanel`·`closePanel`·`renderNodePanel` 세 곳에서 `hidden`을 맞춘다. `renderNodePanel`은 `await uploadImage()` 뒤처럼 **패널이 이미 바뀐 뒤에도 불리므로** `rpCur !== 'node'`를 직접 확인해야 한다. 헤더에 `#id` 로 색을 주면 `.rp-h button:hover`(특이도 0,2,1)를 이겨 버리니 `:hover`도 같이 정의할 것.
+- **연결선이 카드 위에 있는 것처럼 보이면 쌓임 순서가 아니라 카드 투명도를 볼 것.** `#edgeSvg` 는 `#nodes` 보다 앞에 있고 `.node` 는 `z-index:1` 이상이라 선은 **언제나** 카드 아래에 그려진다(실제 Chrome 에서 보통·펼침·선택·최상단·검색강조·관계선택 여섯 상태 모두 확인). 예전에 선이 위에 있어 보였던 이유는 보통 카드 배경이 반투명이었기 때문 — 다크 `.65`, 라이트/세피아 `.15` 라 뒤의 선이 그대로 비쳤다. 그래서 `.node` 는 `linear-gradient(var(--c-bg), var(--c-bg)), var(--bg2)` 로 **타입 색조를 불투명 바탕 위에 얹는다**. `background:var(--c-bg)` 처럼 되돌리지 말 것. `.e-detail` 도 같은 이유로 `--glass` 가 아니라 `--bg2` 를 쓴다.
+- 노드보다 위에 그리는 선은 스냅 가이드(`.gv/.gh`, z-index 6)와 마퀴 상자(`#marquee`, 16)뿐이다. 이 둘은 조작 중에만 보이는 안내선이라 의도된 것이다.
 - 연결선은 노드 테두리에서 절단된다(`trimQuad`, 이분 탐색). 노드 크기·위치를 바꾸는 코드는 `renderEdges()` 또는 `updateEdgesFor()`를 다시 불러야 절단이 맞는다.
 - AI 사건 생성은 노드 선택 모드(`evPick`, `#pickBanner`)로 동작한다. 선택 모드 중 노드 클릭은 펼침이 아니라 선택 토글이다.
 - `sel`은 항상 `{nodeIds:배열, edgeId}` 형태여야 한다. `nodeId`(단수)로 잘못 쓰면 `isSel`이 `undefined.includes`로 죽고, `renderNodes`는 `nodesEl.innerHTML=''` 직후 예외로 중단되어 **노드가 화면에서 전부 사라진다**(새로고침 전까지). 선택 해제는 `clearSel()`을 쓸 것.
