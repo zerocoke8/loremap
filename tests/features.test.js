@@ -2116,5 +2116,125 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     E("closePanel(); curTab()._chat = null;");
   }
 
+  /* ---- 33. 검색 범위 · 메모 공개 · 사건 등장 노드 · CSV · 가져오기 안내 ---- */
+  {
+    E("clearSel(); closePanel(); exitEventPick(); activeTabId = tabs[0].id;");
+    E("curTab().nodes.length=0; curTab().edges.length=0; curTab().events.length=0;");
+    E("curTab()._chat = null; curTab().worldPrompt = '';");
+    E("curTab().nodes.push(" +
+      "{id:'x1', type:'char', types:['char'], name:'레온', desc:'기사', x:1000, y:1000," +
+      " memo:'비밀 결사와 내통 중', tags:['은빛기사단'], props:[{k:'계열',v:'화염'},{k:'나이',v:'27'}]}," +
+      "{id:'x2', type:'space', types:['space'], name:'은빛탑', desc:'', x:1400, y:1000, memo:''}," +
+      "{id:'x3', type:'char', types:['char'], name:'세리', desc:'', x:1800, y:1000, memo:''});");
+    E("curTab().edges.push({id:'x9', from:'x1', to:'x2', label:'수호', desc:'맹세로 묶여 있다', isParent:false});");
+    E("curTab().events.push({id:'x20', time:'402년', body:'세리가 탑에 올랐다', order:10, who:['x3']});");
+    E("setEditMode(true); commit(); renderAll();");
+
+    /* --- 검색 범위 --- */
+    E("runSearch('화염')"); await wait(30);
+    T("33-1 속성 값으로 찾는다", E("searchHits.join(',')") === "x1", E("searchHits.join(',')"));
+    E("runSearch('비밀 결사')"); await wait(30);
+    T("33-2 메모로 찾는다", E("searchHits.join(',')") === "x1");
+    E("runSearch('은빛기사단')"); await wait(30);
+    T("33-3 소속으로 찾는다", E("searchHits.join(',')") === "x1");
+    E("runSearch('맹세')"); await wait(30);
+    T("33-4 관계 설명으로 찾으면 양끝 노드가 걸린다",
+      E("searchHits.slice().sort().join(',')") === "x1,x2", E("searchHits.join(',')"));
+    E("runSearch('탑에 올랐다')"); await wait(30);
+    T("33-5 사건 본문으로 찾으면 등장 이름의 노드가 걸린다",
+      E("searchHits.includes('x3')"), E("searchHits.join(',')"));
+    E("runSearch('레온')"); await wait(30);
+    T("33-6 이름 검색은 그대로", E("searchHits.join(',')") === "x1");
+    E("runSearch('계열:화염')"); await wait(30);
+    T("33-7 속성 이름을 콕 집어 찾는다", E("searchHits.join(',')") === "x1");
+    E("runSearch('나이:화염')"); await wait(30);
+    T("33-8 다른 속성의 값으로는 안 걸린다", E("searchHits.length") === 0);
+    T("33-9 첫 콜론에서만 자른다 — 값의 콜론은 건드리지 않는다", (() => {
+      const q = JSON.parse(E("JSON.stringify(parseQuery('주소:https://a.b'))"));
+      return q.key === "주소" && q.val === "https://a.b";
+    })());
+    T("33-10 콜론이 없으면 통짜 검색", (() => {
+      const q = JSON.parse(E("JSON.stringify(parseQuery('그냥말'))"));
+      return q.key === "" && q.val === "그냥말";
+    })());
+    T("33-11 결과는 캔버스 순서대로", (() => {
+      E("runSearch('')");
+      E("curTab().nodes.forEach(n => n.memo = '공통'); runSearch('공통')");
+      return E("searchHits.join(',')") === "x1,x2,x3";
+    })());
+    E("curTab().nodes[0].memo = '비밀 결사와 내통 중'; curTab().nodes[1].memo=''; curTab().nodes[2].memo='';");
+    E("runSearch('')");
+
+    /* --- 메모가 보기 전용에도 보인다 --- */
+    E("sel={nodeIds:['x1'], edgeId:null}; openNodePanel();"); await wait(40);
+    T("33-12 메모 칸에 eo 가 없다", !doc.getElementById("npMemo").classList.contains("eo"));
+    T("33-13 편집 모드에선 고칠 수 있다", doc.getElementById("npMemo").readOnly === false);
+    E("setEditMode(false); renderNodePanel();"); await wait(30);
+    T("33-14 보기 모드에서도 메모 내용이 있다",
+      doc.getElementById("npMemo").value === "비밀 결사와 내통 중");
+    T("33-15 보기 모드에선 읽기 전용", doc.getElementById("npMemo").readOnly === true);
+    E("setEditMode(true); renderNodePanel();"); await wait(30);
+
+    /* --- 사건 등장 노드 --- */
+    T("33-16 저장 형식에 who 가 실린다", (() => {
+      E("saveLocal()");
+      const t = JSON.parse(w.localStorage.getItem("wm_tabs")).tabs.find(x => x.id === E("activeTabId"));
+      return JSON.stringify(t.events[0].who) === JSON.stringify(["x3"]);
+    })());
+    T("33-17 Firebase 형식에도 실린다",
+      E("JSON.stringify(normFB('events', curTab().events[0]).who)") === '["x3"]');
+    T("33-18 중복·빈 값을 걸러 정렬한다",
+      E("JSON.stringify(cleanWho(['b','a','b','',null]))") === '["a","b"]');
+    T("33-19 없으면 빈 배열 — RTDB 가 빈 배열을 안 저장하는 것과 어긋나지 않는다",
+      E("JSON.stringify(normFB('events', {time:'x'}).who)") === "[]");
+    T("33-20 AI 컨텍스트에 등장 인물이 붙는다",
+      E("buildCtx(curTab()).eventsStr").includes("등장: 세리"), E("buildCtx(curTab()).eventsStr"));
+    E("openPanel('events')"); await wait(40);
+    T("33-21 사건 패널에 등장 칩이 뜬다",
+      doc.querySelector("#evList .ev-who [data-go]") !== null &&
+      doc.querySelector("#evList .ev-who [data-go]").textContent === "세리");
+    T("33-22 칩을 누르면 그 노드로 간다", (() => {
+      doc.querySelector('#evList .ev-who [data-go]').dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+      return E("sel.nodeIds.join(',')") === "x3";
+    })());
+    T("33-23 지워진 노드는 칩에서 걸러진다", (() => {
+      E("curTab().events[0].who = ['x3', '없는노드']; renderEvents();");
+      return doc.querySelectorAll("#evList .ev-who [data-go]").length === 1;
+    })());
+
+    /* --- CSV --- */
+    const csv = E("nodesCsv(curTab())");
+    T("33-24 엑셀이 한글을 읽도록 BOM 을 붙인다", csv.charCodeAt(0) === 0xFEFF);
+    T("33-25 속성이 열로 펴진다", (() => {
+      const head = csv.slice(1).split("\r\n")[0];
+      return head.startsWith("이름,타입,소속,설명,계열,나이,") && head.includes("메모");
+    })(), csv.slice(1).split("\r\n")[0]);
+    T("33-26 값이 행에 들어간다", csv.includes("레온") && csv.includes("화염") && csv.includes("27"));
+    T("33-27 쉼표·따옴표·줄바꿈은 감싼다", (() => {
+      return E("csvCell('가,나')") === '"가,나"' &&
+             E("csvCell(String.fromCharCode(34) + '따' + String.fromCharCode(34))") ===
+               '"' + String.fromCharCode(34,34) + '따' + String.fromCharCode(34,34) + '"' &&
+             E("csvCell('한\\n줄')").startsWith(String.fromCharCode(34));
+    })());
+    T("33-28 관계 CSV 는 이름으로 쓴다", (() => {
+      const e = E("edgesCsv(curTab())");
+      return e.includes("레온") && e.includes("은빛탑") && e.includes("수호") && e.includes("일반");
+    })());
+    T("33-29 사건 CSV 에 등장이 들어간다", E("eventsCsv(curTab())").includes("세리"));
+    T("33-30 파일 이름에 못 쓰는 글자를 거른다",
+      E("safeName('가/나:다*라')") === "가_나_다_라");
+
+    /* --- 가져오기가 조용히 버리지 않는다 --- */
+    T("33-31 끝점을 못 찾은 관계를 알린다", (() => {
+      E("window.__toasts = []; const _t = toast; toast = (m, e2) => { window.__toasts.push(String(m)); };");
+      E("applyImportResult(curTab(), {nodes:[{name:'새하나',type:'char',desc:''}]," +
+        "edges:[{from:'새하나', to:'세상에없음', label:'x'}]}, null);");
+      const msgs = JSON.parse(E("JSON.stringify(window.__toasts)"));
+      return msgs.some(m => m.includes("끝점을 못 찾아"));
+    })(), E("JSON.stringify(window.__toasts)"));
+    E("toast = window.__realToast || toast;");
+    E("closePanel(); clearSel();");
+  }
+
   done();
 })();

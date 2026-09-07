@@ -443,6 +443,13 @@ body.edit div.eo,body.edit span.eo{display:flex}
   white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
 #npBody{padding-bottom:22px}          /* 메모 아래로 숨 쉴 공간 */
 #npMemo{margin-top:12px}              /* 머리글 없이 설명 바로 아래 온다 */
+/* 보기 모드에서는 글처럼 — 테두리를 지워 입력칸으로 보이지 않게 한다 */
+.np-memo:read-only{background:none;border-color:transparent;padding:0;resize:none;
+  color:var(--text2)}
+/* 사건에 등장하는 노드 — 누르면 그 노드로 간다 */
+.ev-who{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.ev-who .nt{cursor:pointer}
+.ev-who .nt:hover{color:var(--text);border-color:var(--accent2)}
 .np-links{display:flex;flex-direction:column;gap:6px}
 .np-link{display:flex;gap:6px;align-items:center}
 .nt.tag{border-style:dashed;color:var(--text3)}
@@ -761,7 +768,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
         <div id="npProps" class="np-table"></div>
         <div id="npDescView" class="np-desc-v"></div>
         <textarea id="npDesc" class="np-desc" rows="5" placeholder="이 요소에 대한 설정 — 자동 저장됩니다"></textarea>
-        <textarea id="npMemo" rows="6" class="eo" placeholder="이 노드에 대한 메모 — 주소를 붙여넣으면 링크가 됩니다"></textarea>
+        <textarea id="npMemo" rows="6" class="np-memo" placeholder="이 노드에 대한 메모 — 주소를 붙여넣으면 링크가 됩니다"></textarea>
         <div id="npMemoLinks" class="np-links"></div>
       </div>
     </div>
@@ -912,6 +919,7 @@ function sanitizeTab(t){
   });
   if(!t.edges) t.edges = [];
   if(!t.events) t.events = [];
+  t.events.forEach(v => { v.who = cleanWho(v.who); });
   if(!t.refImages) t.refImages = [];
   if(t.worldPrompt == null) t.worldPrompt = '';
   if(!t.title) t.title = '무제';
@@ -1375,8 +1383,12 @@ function cleanEdgeLS(e){
   return {id:e.id, from:e.from, to:e.to, label:e.label ?? '', desc:e.desc ?? '',
           isParent:!!e.isParent};
 }
+/* 등장 노드 목록을 결정적으로 만든다 — 순서가 흔들리면 Firebase 가 헛 diff 를 보낸다 */
+function cleanWho(w){
+  return [...new Set((Array.isArray(w) ? w : []).filter(v => v != null && v !== '').map(String))].sort().slice(0, 40);
+}
 function cleanEventLS(v){
-  return {id:v.id, time:v.time ?? '', body:v.body ?? '', order:v.order ?? 0};
+  return {id:v.id, time:v.time ?? '', body:v.body ?? '', order:v.order ?? 0, who:cleanWho(v.who)};
 }
 function cleanTab(t){
   return {
@@ -1442,6 +1454,63 @@ function downloadText(name, text, type = 'application/json'){
 function exportJson(){
   downloadText('loremap-export.json', JSON.stringify({tabs: tabs.map(cleanTab)}, null, 2));
   toast('loremap-export.json 파일로 저장했습니다');
+}
+
+/* 엑셀로 여는 CSV. 진짜 .xlsx 는 라이브러리가 필요해 단일 파일 원칙과 안 맞는다.
+   ⚠ 엑셀은 BOM 이 없으면 UTF-8 을 못 알아보고 한글을 깨뜨린다. */
+const CSV_BOM = '\uFEFF';
+function csvCell(v){
+  const t = String(v ?? '');
+  /* 쉼표·따옴표·줄바꿈이 있으면 감싸고, 안쪽 따옴표는 두 번 쓴다 */
+  return /[",\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+}
+function csvRows(rows){
+  return CSV_BOM + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+}
+/* 노드 표 — 속성은 이 탭에서 실제로 쓰인 이름을 모아 열로 편다 */
+function nodesCsv(tab){
+  const live = tab.nodes.filter(n => !n._aiPreview).sort(byMakeOrder);
+  const keys = [];
+  live.forEach(n => (n.props || []).forEach(p => {
+    const k = String(p.k ?? '').trim();
+    if(k && !keys.includes(k)) keys.push(k);
+  }));
+  const head = ['이름', '타입', '소속', '설명', ...keys, '메모', '이미지 수'];
+  const rows = live.map(n => [
+    n.name ?? '',
+    nodeTypeLabels(tab, n).join(' · '),
+    (n.tags || []).join(' · '),
+    n.desc ?? '',
+    ...keys.map(k => propGet(n, k) ?? ''),
+    n.memo ?? '',
+    (n.imgs || []).length
+  ]);
+  return csvRows([head, ...rows]);
+}
+function edgesCsv(tab){
+  const nm = id => nodeById(tab, id)?.name ?? '(사라진 노드)';
+  const rows = tab.edges.filter(e => !e._aiPreview).sort(byMakeOrder)
+    .map(e => [nm(e.from), nm(e.to), e.label ?? '', e.isParent ? '상하위' : '일반', e.desc ?? '']);
+  return csvRows([['출발', '도착', '관계', '종류', '설명'], ...rows]);
+}
+function eventsCsv(tab){
+  const rows = [...tab.events].sort((a,b) => (a.order ?? 0) - (b.order ?? 0)).map(ev => [
+    ev.order ?? 0,
+    ev.time ?? '',
+    ev.body ?? '',
+    (ev.who || []).map(id => nodeById(tab, id)?.name).filter(Boolean).join(' · ')
+  ]);
+  return csvRows([['순서', '시점', '내용', '등장'], ...rows]);
+}
+/* 파일 이름에 쓸 수 없는 글자를 걷어낸다 */
+const safeName = t => String(t || '무제').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40);
+function exportCsv(){
+  const tab = curTab(); if(!tab) return;
+  const base = 'loremap-' + safeName(tab.title);
+  downloadText(base + '-노드.csv', nodesCsv(tab), 'text/csv;charset=utf-8');
+  if(tab.edges.length) downloadText(base + '-관계.csv', edgesCsv(tab), 'text/csv;charset=utf-8');
+  if(tab.events.length) downloadText(base + '-사건.csv', eventsCsv(tab), 'text/csv;charset=utf-8');
+  toast(`'${tab.title}' 을 CSV 로 저장했습니다 — 엑셀에서 바로 열립니다`);
 }
 
 async function applyImport(parsed){
@@ -1538,7 +1607,7 @@ function normFB(kind, d){
                                 imgs:(Array.isArray(d.imgs) ? d.imgs : []).map(im => ({id:String(im.id??''), w:+im.w||0, h:+im.h||0, cap:String(im.cap??'')})),
                                 name:d.name??'', desc:d.desc??'', x:Math.round(d.x||0), y:Math.round(d.y||0)};
   if(kind === 'edges')  return {from:d.from||'', to:d.to||'', label:d.label??'', desc:d.desc??'', isParent:!!d.isParent};
-  return {time:d.time??'', body:d.body??'', order:d.order??0};
+  return {time:d.time??'', body:d.body??'', order:d.order??0, who:cleanWho(d.who)};
 }
 function metaFB(t){
   return {title:t.title??'무제', worldPrompt:t.worldPrompt??'',
@@ -3059,13 +3128,59 @@ function closeSearch(){
   updateSearchUI();
   renderNodes();                      // 강조 클래스 제거
 }
+/* '계열:화염' 처럼 첫 콜론 앞뒤로 나누면 그 속성만 정확히 본다.
+   값에 https:// 같은 콜론이 들어가므로 반드시 첫 콜론에서만 자른다. */
+function parseQuery(t){
+  const i = t.indexOf(':');
+  if(i <= 0) return {key:'', val:t};
+  const key = t.slice(0, i).trim();
+  /* 속성 이름은 24자 상한이라 그보다 길면 키가 아니라고 본다 */
+  if(!key || key.length > 24) return {key:'', val:t};
+  return {key, val: t.slice(i + 1).trim()};
+}
+/* 노드 하나가 질의에 걸리는가 — 이름·설명·속성·소속·메모 */
+function nodeHits(n, q){
+  const has = v => String(v ?? '').toLowerCase().includes(q.val);
+  if(q.key){
+    /* 속성 이름을 콕 집은 질의 — 그 속성의 값만 본다 */
+    return (n.props || []).some(p =>
+      String(p.k ?? '').toLowerCase().includes(q.key.toLowerCase()) &&
+      (!q.val || has(p.v)));
+  }
+  if(!q.val) return false;
+  if(has(n.name) || has(n.desc) || has(n.memo)) return true;
+  if((n.tags || []).some(has)) return true;
+  return (n.props || []).some(p => has(p.k) || has(p.v));
+}
 function runSearch(q){
   const tab = curTab();
   const t = String(q || '').trim().toLowerCase();
-  searchHits = (!t || !tab) ? [] : tab.nodes.filter(n => !n._aiPreview && (
-      String(n.name || '').toLowerCase().includes(t) ||
-      String(n.desc || '').toLowerCase().includes(t)
-    )).map(n => n.id);
+  const pq = parseQuery(t);
+  const hit = new Set();
+  if(t && tab){
+    tab.nodes.forEach(n => { if(!n._aiPreview && nodeHits(n, pq)) hit.add(n.id); });
+    if(!pq.key){
+      /* 관계와 사건에서 걸리면 그것이 가리키는 노드를 결과로 삼는다 */
+      tab.edges.forEach(e => {
+        if(e._aiPreview) return;
+        const s2 = (String(e.label ?? '') + ' ' + String(e.desc ?? '')).toLowerCase();
+        if(!s2.includes(pq.val)) return;
+        [e.from, e.to].forEach(id => { if(nodeById(tab, id)) hit.add(id); });
+      });
+      const names = tab.nodes.filter(n => !n._aiPreview);
+      tab.events.forEach(ev => {
+        const s2 = (String(ev.time ?? '') + ' ' + String(ev.body ?? '')).toLowerCase();
+        if(!s2.includes(pq.val)) return;
+        /* 사건 본문에 이름이 나오는 노드를 결과로 — 사건 자체는 📜 패널에서 본다 */
+        names.forEach(n => {
+          const nm = String(n.name || '').trim();
+          if(nm && s2.includes(nm.toLowerCase())) hit.add(n.id);
+        });
+      });
+    }
+  }
+  /* 캔버스 순서대로 훑도록 정렬 — Set 순서는 넣은 순서라 뒤죽박죽이다 */
+  searchHits = tab ? tab.nodes.filter(n => hit.has(n.id)).map(n => n.id) : [];
   searchQuery = t;
   searchIdx = searchHits.length ? 0 : -1;
   updateSearchUI();
@@ -3500,9 +3615,17 @@ function applyImportResult(tab, data, pre){
   const aiParent = {};
   if(pre && Array.isArray(data.edges)) data.edges.forEach(e => { aiParent[`${e.from}\u0000${e.to}`] = !!e.isParent; });
   const newEdges = [];
+  const skipped = [];                 // 왜 빠졌는지 말해 주려고 모은다
   src.forEach(e => {
-    const f = byName[String(e.from || "").trim()], t = byName[String(e.to || "").trim()];
-    if(!f || !t || f === t) return;
+    const fn = String(e.from || "").trim(), tn = String(e.to || "").trim();
+    const f = byName[fn], t = byName[tn];
+    if(!f || !t || f === t){
+      const why = (f === t && f) ? '양끝이 같은 노드' :
+        (!f && !t) ? `'${fn}' 과 '${tn}' 을 못 찾음` :
+        !f ? `'${fn}' 을 못 찾음` : `'${tn}' 을 못 찾음`;
+      skipped.push(`${fn || '?'} → ${tn || '?'} (${why})`);
+      return;
+    }
     const key = `${e.from}\u0000${e.to}`;
     const ne = {id:gid(), from:f, to:t, label:String(e.label || "").slice(0, 20),
                 desc:"", isParent: pre ? (aiParent[key] ?? true) : !!e.isParent};
@@ -3515,6 +3638,11 @@ function applyImportResult(tab, data, pre){
   commit(); renderAll(); zoomFit();
   toast(`노드 ${made.length}개 · 관계 ${newEdges.length}개를 추가했습니다` +
         (addedTypes ? ` (새 타입 ${addedTypes}개)` : "") + " — Ctrl+Z 로 되돌릴 수 있습니다");
+  /* 조용히 버리지 않는다 — 숫자만 줄면 원인을 찾을 길이 없다 */
+  if(skipped.length){
+    console.warn('가져오기: 끝점을 못 찾아 건너뛴 관계', skipped);
+    toast(`관계 ${skipped.length}개는 끝점을 못 찾아 건너뛰었습니다 (콘솔에 목록)`, true);
+  }
 }
 
 /* ==================================================================
@@ -3795,7 +3923,9 @@ function buildCtx(tab){
     .map(ev => {
       const b = String(ev.body ?? '');
       const short = b.length > EV_CTX_MAX ? b.slice(0, EV_CTX_MAX) + '…' : b;
-      return `- (order ${ev.order ?? 0}) ${ev.time || '시점 미상'}: ${short}`;
+      const who = (ev.who || []).map(id => nodeById(tab, id)?.name).filter(Boolean);
+      const tail = who.length ? ` (등장: ${who.join(', ')})` : '';
+      return `- (order ${ev.order ?? 0}) ${ev.time || '시점 미상'}: ${short}${tail}`;
     })
     .join('\n') || '(없음)';
   const names = liveNodes.map(n => n.name).filter(Boolean);
@@ -4082,6 +4212,11 @@ function renderNodePanel(){
 
   const memo = $('#npMemo');
   if(document.activeElement !== memo) memo.value = n.memo || '';
+  /* 이제 보기 전용 방문자에게도 보인다 — 대신 고치지는 못한다 */
+  memo.readOnly = !editMode;
+  memo.placeholder = editMode
+    ? '이 노드에 대한 메모 — 주소를 붙여넣으면 링크가 됩니다'
+    : '메모가 없습니다.';
 }
 /* ---------------- §5-17 노드 이미지 (R2) ----------------
    바이트는 Worker 를 거쳐 R2 에 두고, 노드에는 {id,w,h,cap} 만 남긴다.
@@ -4583,7 +4718,18 @@ function renderEvents(){
       `<div class="ev-top"><span class="ev-o">${ev.order ?? 0}</span>` +
       `<span class="ev-t">${escHtml(ev.time || '시점 미상')}</span>` +
       `<span class="ev-acts"><button data-a="e" title="편집">✏️</button><button data-a="d" title="삭제">🗑</button></span></div>` +
-      `<div class="ev-b">${escHtml(ev.body || '')}</div>`;
+      `<div class="ev-b">${escHtml(ev.body || '')}</div>` +
+      (() => {
+        /* 등장 노드 — 지워진 노드는 걸러 낸다(사건은 남고 노드만 사라질 수 있다) */
+        const who = (ev.who || []).map(id => nodeById(tab, id)).filter(Boolean);
+        return who.length
+          ? `<div class="ev-who">${who.map(n =>
+              `<span class="nt" data-go="${escHtml(n.id)}">${escHtml(n.name || '(이름 없음)')}</span>`).join('')}</div>`
+          : '';
+      })();
+    el.querySelectorAll('[data-go]').forEach(chip => {
+      chip.onclick = () => { gotoNode(chip.dataset.go); };   // 누르면 그 노드로
+    });
     el.querySelector('[data-a=e]').onclick = () => openEventModal(ev);
     el.querySelector('[data-a=d]').onclick = () => {
       if(!reqEdit()) return;
@@ -4681,7 +4827,8 @@ function addPickedEvent(){
     id: gid(),
     time: String(r.time || ''),
     body: String(r.body || ''),
-    order: Number.isFinite(+r.order) ? Math.round(+r.order) : maxOrder(tab) + 10
+    order: Number.isFinite(+r.order) ? Math.round(+r.order) : maxOrder(tab) + 10,
+    who: cleanWho(r.who)            // 고른 노드를 버리지 않는다
   });
   commit();
   exitEventPick();
@@ -4727,6 +4874,7 @@ async function runEventPick(){
     if(!parsed || !parsed.body) throw new Error('AI 응답을 해석하지 못했습니다. 다시 시도해주세요.');
     /* 바로 넣지 않는다 — 읽어 보고 [＋ 연표에 추가] 를 눌러야 확정된다 */
     evPick.result = {
+      who: picked.map(p => p.id),      // 이 사건을 만든 근거가 된 노드들
       time: wantTime || String(parsed.time || ''),
       body: String(parsed.body),
       order: Number.isFinite(+parsed.order) ? Math.round(+parsed.order) : maxOrder(tab) + 10
@@ -5076,7 +5224,8 @@ function openVisitModal(node){
       id: gid(),
       time: '기록되지 않은 시점',
       body: `[${node.name} 방문] ` + lastVisit.text,
-      order: maxOrder(tab) + 10
+      order: maxOrder(tab) + 10,
+      who: [node.id]
     });
     commit();
     if(rpCur === 'events') renderEvents();
@@ -5519,6 +5668,7 @@ function openSettings(){
       <div><label>데이터</label>
         <div class="row-btns">
           <button class="btn" id="stExport">💾 파일로 저장</button>
+          <button class="btn" id="stCsv">📊 엑셀(CSV)로 내보내기</button>
           <button class="btn" id="stImport">📂 파일에서 불러오기</button>
           <button class="btn eo" id="stImgClean">🧹 안 쓰는 이미지 정리</button>
         </div>
@@ -5543,6 +5693,7 @@ function openSettings(){
     themeCommitted = true;
   };
   ov.querySelector('#stExport').onclick = exportJson;
+  ov.querySelector('#stCsv').onclick = exportCsv;
   ov.querySelector('#stImgClean').onclick = cleanupImages;
   ov.querySelector('#stImport').onclick = () => {
     if(!editMode){ toast('불러오기는 모든 데이터를 덮어쓰므로 🔒 버튼으로 편집 모드에 들어간 뒤 사용할 수 있습니다', true); return; }

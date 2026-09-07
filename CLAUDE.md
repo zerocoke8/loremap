@@ -20,13 +20,13 @@ README.md              배포 안내 (관리자용)
 
 ```bash
 npm install        # jsdom 하나뿐
-npm test           # 7개 파일 · 626개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
+npm test           # 7개 파일 · 657개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
 npm run check      # index.html 안의 스크립트 문법 검사
 ```
 
 ## 절대 바꾸면 안 되는 것 (기존 사용자 데이터 호환)
 
-- **데이터 스키마**: Tab{id,title,nodes,edges,events,worldPrompt,nodeTypes,refImages}, Node{id,type,name,desc,x,y}, Edge{id,from,to,label,desc,isParent}, Event{id,time,body,order}. `gid()`='i'+카운터. 런타임 전용 필드는 `_exp`, `_aiPreview`, `_chat`이며 절대 저장하지 않는다(`cleanTab` 화이트리스트).
+- **데이터 스키마**: Tab{id,title,nodes,edges,events,worldPrompt,nodeTypes,refImages}, Node{id,type,name,desc,x,y}, Edge{id,from,to,label,desc,isParent}, Event{id,time,body,order,who[]}. `gid()`='i'+카운터. 런타임 전용 필드는 `_exp`, `_aiPreview`, `_chat`이며 절대 저장하지 않는다(`cleanTab` 화이트리스트).
 - **타입 목록 정규화는 `normTypes()` 하나만 쓴다** — `sanitizeTab`·`cleanTab`·`metaFB`·meta 수신·`adoptServerTab` 다섯 자리가 같은 함수를 지나야 한다. 예전에 네 곳이 `{key,label}` 만 넘겨 `fields`(타입 기본 속성)가 새로고침을 못 넘겼다. 모양이 한 곳만 달라도 `metaKey` 가 어긋나 meta 를 무한 재전송한다.
 - **노드 타입은 탭 데이터**다(`Tab.nodeTypes = [{key,label,fields[]}]` — `fields` 는 그 타입 노드에 기본으로 깔아줄 속성 이름들, 배열 순서 = 상하위 단계, 색은 순서대로 자동 배정, 이모지 없음). 옛 상수 `TL/TI/TC/TYPES`는 없어졌고 `DEFAULT_TYPES`/`typeList/typeLabel/typeColors/typeKeyOr`가 대신한다. **`key`는 `node.type`에 저장되는 값이라 절대 바꾸지 않는다**(label만 변경). 기본 7종의 key(world…custom)는 기존 사용자 데이터 호환을 위해 유지한다.
 - **localStorage 키**: `wm_tabs` = `JSON.stringify({tabs})` 형식 고정. `wm_fbcfg`(수동 Firebase 설정), `wm_theme`, `wm_edgecolor`, `wm_edgeshape`, `wm_toc`(접어둔 목차 타입 key 배열), `wm_npsize`(설명·메모 칸 높이 `{desc,memo}`), `wm_lasttab`(마지막으로 보던 탭 id). 옛 키 `wm_k/wm_gk/wm_mh`는 더 이상 쓰지 않지만 지우지도 않는다. **화면 취향(테마·목차·칸 높이)만 넣는다 — 세계관 데이터는 `wm_tabs` 하나뿐이다.**
@@ -54,7 +54,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§5-16 노드 상세 패널` | `renderNodePanel`/`panelNode`/`openNodePanel`. 위 칸=이미지·이름·타입·속성·설명, 아래 칸=메모(노드별, 머리글 없음 — 안내는 placeholder). 두 칸의 사용자 조절 높이는 `npSize`→`wm_npsize`(`applyNpSize`/`rememberNpSize`, 노드별이 아니라 브라우저별). 노드 클릭은 펼침과 패널을 **함께** 연다. 설명·메모는 `autoText`가 붙은 자동 저장 칸 — 입력이 `TEXT_SAVE_MS`(800ms) 멈추면 `commit()` 한 번, blur·`beforeunload`에서는 `flushPendingText()`로 즉시. 그 커밋 하나가 되돌리기 한 단계다 |
 | 노드 겹침 | `topNodeId`(런타임 전용, 마지막으로 건드린 카드) → `.node.top` z-index 6. 펼침·선택·최상단은 타입 색조를 불투명 바탕 위에 얹어 뒤를 가린다 |
 | `§5-18 노드 목차` | `renderTocPanel`(`tocSig` 로 내용이 같으면 DOM 을 건드리지 않는다)/`gotoNode`/`markTocCurrent`/`toggleTocSection`. 주 타입 기준으로 한 번만 나열해 중복을 막는다. 한 번 클릭=이동, 두 번=상세까지(`TOC_DBL_MS` 수동 감지), 타입 이름 클릭=접기(`tocClosed` → `wm_toc`, 탭 구분 없이 브라우저에 남는다) |
-| `§5-14 노드 검색` | `runSearch`/`stepSearch`/`centerOnNode`. `searchHits`+`searchIdx`+`searchQuery`(재검색·순회 구분). 강조는 `renderNodes` 가 `.found`/`.cur` 클래스로 |
+| `§5-14 노드 검색` | `runSearch`/`parseQuery`/`nodeHits`/`stepSearch`/`centerOnNode`. 이름·설명·**메모·속성·소속**을 보고, 관계(label·desc)와 사건(time·body)에서 걸리면 **그것이 가리키는 노드**로 환산한다 — `searchHits` 는 계속 노드 id 배열이다. `계열:화염` 처럼 첫 콜론 앞을 속성 이름으로 본다(값의 `https://` 를 깨지 않으려 첫 콜론에서만 자른다). 강조는 `renderNodes` 가 `.found`/`.cur` 로 |
 | `§5-15 선택 영역 복사` | `copySelection`/`pasteClip`(내부 버퍼 `clipBuf`), `copySelectionImage`(캔버스에 직접 그려 투명 PNG). 연결선은 화면 SVG 의 `d`(M x y Q …)를 그대로 재현한다 |
 | `§5-4 노드 자동 정렬` | `computeRadialLayout`, `tweenTo` |
 | `§6 AI 호출 헬퍼` | `callClaude(system, messages, maxTokens, opts)` / `callGemini` → 모두 `apiPost`로 Worker 경유. `opts.effort`로 사고 깊이를, `opts.label`로 계측 이름을 준다. 호출마다 `noteUsage`가 `aiUsage`(세션 누적 입력·출력·캐시·잘림 횟수)에 적재하고 콘솔에 남긴다 |
@@ -78,6 +78,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - **목차의 더블클릭은 직접 센다**(`TOC_DBL_MS`). `#tocBody`를 다시 그리면 두 번째 클릭이 사라진 요소에 떨어져, 브라우저가 `dblclick`을 공통 조상(`#tocBody`)에 쏘고 `closest('.toc-i')`가 null 이 된다. 그래서 ① `.cur`(현재 노드 강조)는 **생성 HTML 에 넣지 않고** `markTocCurrent()`가 제자리에서만 붙이고, ② `renderTocPanel`은 `tocSig`(직전 HTML)와 같으면 `innerHTML`을 건드리지 않는다. 이 둘 덕에 `renderAll()`이 목차를 매번 불러도 요소가 살아남는다. 합성 `dblclick`을 쏘는 테스트는 이 회귀를 잡지 못한다 — 클릭 **두 번**으로 검증할 것.
 - 목차는 `renderAll()`이 끌고 간다(`rpCur === 'list'`일 때). `commit()`은 패널을 갱신하지 않으므로, 여기서 빼면 이름 변경·삭제 뒤 목차에 유령 항목이 남는다.
 - **`rows=N` textarea 에 `scrollHeight` 기반 자동 높이를 붙이지 말 것.** `height:'auto'`면 textarea 는 `rows` 크기로 돌아가고 `scrollHeight ≥ clientHeight`라 그 아래로 줄지 않는다(`min-height:0`도 무력). 게다가 한 번 잰 px 를 `overflow:hidden`과 함께 고정하면 나중에 스크롤바가 생겨 폭이 줄 때 마지막 줄이 잘리고, 편집 모드에서 `style.height=''`로 되돌리면 사용자가 드래그로 늘린 높이를 지운다. 노드 설명은 **보기용 `#npDescView`(div) + 편집용 `#npDesc`(textarea)** 로 나눠 높이를 아예 계산하지 않는다.
+- **메모(`#npMemo`)는 이제 보기 전용 방문자에게도 보인다** — `.eo` 를 떼고 `readOnly` 로 막는다. 즉 **메모 내용은 공개된다**(사용자가 그렇게 정했다). 검색도 메모를 본다.
 - `.eo`는 `display:none`이라 **편집 모드에서만 보여야 하는 것에만** 붙인다. 보기 전용 방문자도 읽어야 하는 칸(노드 설명 등)에 붙이면 통째로 사라진다. 읽기 전용 표시는 `readOnly`로 하고 `.eo`는 붙이지 않는다.
 - **`paste` 는 포커스된 요소에서 난다.** 패널에만 걸면 캔버스에서 노드를 고른 직후 Ctrl+V 했을 때(포커스가 `body`) 이벤트가 오지 않는다 — `document` 에서 받을 것. 대신 입력칸에 포커스가 있고 클립보드에 글도 함께 있으면 손대지 말 것(글 붙여넣기가 우선).
 - **파일을 끌어놓을 때 `dragover` 에서 `preventDefault` 를 안 하면 `drop` 이 오지 않고, `drop` 에서 안 하면 브라우저가 그 파일로 이동해 앱이 사라진다.** 그래서 `document` 에서 둘 다 막는다. 단 가져오기 창(`.ov`)은 자기 핸들러가 있으니 건너뛴다.
@@ -114,6 +115,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - **참고 그림체(`refImages`)는 R2 참조라 AI 에 그대로 넘길 수 없다.** `callGemini` 는 `data:` URL 만 인라인으로 실을 수 있어서, `refImageParts()` 가 참조를 받아 `shrinkImage` 로 줄인 뒤 base64 로 바꾼다(원본은 20MB 까지라 반드시 줄인다). `callGemini(prompt, refs)` 의 `prompt` 에 **함수**를 주면 실제로 실린 장수를 받는다 — 한 장도 못 실었는데 "첨부한 그림체를 따르라"고 말하지 않도록 문구를 그 숫자에 묶을 것.
 - 이미지 바이트는 절대 localStorage·Firebase 에 넣지 말 것. base64 로 넣으면 5~10MB 에서 터진다. R2 에 두고 노드에는 참조만 남긴다. **읽기 엔드포인트는 토큰 게이트 앞**에 있어야 보기 전용 방문자도 그림을 본다.
 - 테마는 `THEMES`(dark·light·sepia·slate) 네 가지. 밝은 배경 계열 판정은 `LIGHT_THEMES` 를 쓸 것 — `curTheme === 'light'` 로 비교하면 세피아가 어두운 계열로 잘못 잡힌다.
+- **사건의 `who[]` 는 등장 노드 id 다.** `cleanWho()` 가 빈 값을 걸러 정렬해 **결정적**으로 만든다 — 순서가 흔들리면 Firebase 가 헛 diff 를 보낸다. `sanitizeTab`·`cleanEventLS`·`normFB('events')` 세 곳이 같은 모양을 내야 하고, 기본값은 반드시 `[]` 여야 한다(RTDB 는 빈 배열을 저장하지 않아 서버에서 `undefined` 로 돌아온다). 노드가 지워져도 사건은 남으므로 **읽을 때 `nodeById` 로 걸러 쓸 것.**
 - 노드의 `tags`(소속)는 노드에만 붙는 꼬리표다. `nodeTypes` 와 무관하며 타입 목록에 들어가지 않는다.
 - `worker.js`는 요청 필드를 화이트리스트로만 전달한다(`model`·`max_tokens`·`messages`·`system`·`temperature`·`output_config.effort`). 새 API 파라미터가 필요하면 Worker와 클라이언트 양쪽을 함께 수정. **`system` 은 문자열과 콘텐츠 블록 배열 둘 다 받는다** — 배열이어야 `cache_control` 을 붙일 수 있고, 예전에는 배열을 보내면 오류 없이 시스템 프롬프트가 통째로 사라졌다. `messages` 는 무검사 통과라 메시지 블록의 `cache_control` 은 Worker 수정 없이 그대로 간다.
 
