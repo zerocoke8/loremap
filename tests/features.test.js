@@ -141,7 +141,15 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     const call = calls.find(c => c.url.endsWith('/api/claude'));
     const body = call && JSON.parse(call.init.body);
     T('선택 노드가 프롬프트에 포함', !!body && body.messages[0].content.includes('주인공') && body.messages[0].content.includes('검') && body.messages[0].content.includes('선택된 노드'));
-    T('사건 추가 + 모드 종료', E('curTab().events.length') === 1 && E('evPick.active') === false && doc.getElementById('pickBanner').hidden);
+    /* 바로 넣지 않는다 — 읽어 보고 넣는다 */
+    T('생성만으로는 연표에 안 들어간다', E('curTab().events.length') === 0 && E('evPick.active') === true);
+    T('결과 미리보기 표시', !doc.getElementById('pickResult').hidden &&
+      doc.getElementById('pickResBody').textContent.length > 0);
+    T('결과가 뜨면 위 생성 버튼은 숨는다', doc.getElementById('pickGo').hidden === true);
+    doc.getElementById('pickAdd').click();
+    await wait(40);
+    T('추가 버튼으로 연표에 확정 + 모드 종료',
+      E('curTab().events.length') === 1 && E('evPick.active') === false && doc.getElementById('pickBanner').hidden);
     T('사건 패널에 표시', doc.querySelectorAll('.ev').length === 1);
     doc.getElementById('evAi').click(); await wait(20);
     doc.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
@@ -1808,6 +1816,111 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     T("30-6 대화는 저장에 실리지 않는다",
       E("JSON.stringify(cleanTab(curTab())).indexOf('_chat')") === -1 &&
       E("JSON.stringify(cleanTab(curTab())).indexOf('레온이다')") === -1);
+  }
+
+  /* ---- 31. 이야기 생성: 시점 입력 · 다시 생성 · 물리기 ---- */
+  {
+    E("clearSel(); closePanel(); exitEventPick(); activeTabId = tabs[0].id;");
+    E("curTab().nodes.length=0; curTab().edges.length=0; curTab().events.length=0;");
+    E("curTab().nodes.push(" +
+      "{id:'s1', type:'char', types:['char'], name:'레온',  desc:'기사', x:1000, y:1000}," +
+      "{id:'s2', type:'space', types:['space'], name:'은빛탑', desc:'',   x:1400, y:1000});");
+    E("setEditMode(true); commit(); renderAll();");
+
+    /* 업스트림을 가로채 프롬프트를 들여다본다 */
+    E("window.__ask = []; window.__n = 0; window.__realCallClaude = callClaude;");
+    E("callClaude = async (sys, msgs, mt, opts) => { " +
+      "window.__ask.push(JSON.stringify({sys, user: msgs[0].content, opts})); " +
+      "window.__n++; " +
+      "return JSON.stringify({time:'AI가 정한 시점', body:'만들어진 사건 ' + window.__n, order:7}); };");
+
+    doc.getElementById("evAi").click();
+    await wait(30);
+    T("31-1 시점 입력칸이 있다", doc.getElementById("pickTime") !== null &&
+      doc.getElementById("pickTime").value === "");
+
+    E("sel={nodeIds:['s1','s2'], edgeId:null}; updatePickBanner();");
+    await wait(20);
+    doc.getElementById("pickTime").value = "제국력 402년 봄";
+    doc.getElementById("pickGo").click();
+    await wait(60);
+
+    const ask1 = JSON.parse(E("window.__ask[0]"));
+    T("31-2 적어 넣은 시점을 프롬프트가 못박는다", ask1.user.includes("제국력 402년 봄"));
+    T("31-3 선택한 노드가 모두 들어간다",
+      ask1.user.includes("레온") && ask1.user.includes("은빛탑"));
+    T("31-4 사고 깊이는 낮게", ask1.opts && ask1.opts.effort === "low");
+    T("31-5 아직 연표에 없다", E("curTab().events.length") === 0);
+    T("31-6 미리보기에 AI 가 만든 본문", doc.getElementById("pickResBody").textContent === "만들어진 사건 1");
+    T("31-7 시점은 AI 값이 아니라 적어 넣은 값",
+      doc.getElementById("pickResTime").textContent === "제국력 402년 봄" &&
+      E("evPick.result.time") === "제국력 402년 봄");
+
+    /* 다시 생성 — 직전 결과를 물리고 다른 것을 요구한다 */
+    doc.getElementById("pickAgain").click();
+    await wait(60);
+    const ask2 = JSON.parse(E("window.__ask[1]"));
+    T("31-8 다시 생성은 직전 사건을 프롬프트에 넣어 피하게 한다",
+      ask2.user.includes("만들어진 사건 1") && ask2.user.includes("뚜렷하게 다른"));
+    T("31-9 새 결과로 갈아끼운다", doc.getElementById("pickResBody").textContent === "만들어진 사건 2");
+    T("31-10 여전히 연표에는 없다", E("curTab().events.length") === 0);
+
+    /* 확정 */
+    doc.getElementById("pickAdd").click();
+    await wait(50);
+    T("31-11 추가하면 연표에 들어간다", E("curTab().events.length") === 1 &&
+      E("curTab().events[0].body") === "만들어진 사건 2");
+    T("31-12 시점과 순서가 함께 들어간다",
+      E("curTab().events[0].time") === "제국력 402년 봄" && E("curTab().events[0].order") === 7);
+    T("31-13 확정하면 선택 모드가 끝난다", E("evPick.active") === false &&
+      doc.getElementById("pickBanner").hidden === true);
+    T("31-14 되돌리기 한 단계로 취소된다", (() => {
+      E("doUndo()");
+      return E("curTab().events.length") === 0;
+    })());
+    E("doRedo()");
+
+    /* 시점을 비우면 AI 가 정한 값을 쓴다 */
+    E("curTab().events.length=0; commit();");
+    doc.getElementById("evAi").click();
+    await wait(30);
+    E("sel={nodeIds:['s1'], edgeId:null}; updatePickBanner();");
+    doc.getElementById("pickGo").click();
+    await wait(60);
+    const ask3 = JSON.parse(E("window.__ask[2]"));
+    T("31-15 시점을 비우면 AI 에게 맡긴다", ask3.user.includes("네가 정하라"));
+    T("31-16 미리보기 시점은 AI 값", E("evPick.result.time") === "AI가 정한 시점");
+
+    /* 물리기 — ESC 로 버리면 아무것도 안 남는다 */
+    doc.dispatchEvent(new w.KeyboardEvent("keydown", {key:"Escape", bubbles:true}));
+    await wait(30);
+    T("31-17 ESC 로 버리면 연표가 그대로", E("curTab().events.length") === 0 &&
+      E("evPick.active") === false && E("evPick.result") === null);
+    T("31-18 다시 열면 시점 입력칸이 비어 있다", (() => {
+      doc.getElementById("evAi").click();
+      return doc.getElementById("pickTime").value === "";
+    })());
+    /* 좁은 창에서 윗줄이 잘려 ESC 취소에 손이 닿지 않던 문제 —
+       jsdom 은 배치를 안 하므로 규칙으로 검증한다(실제 폭은 헤드리스 Chrome 으로 쟀다). */
+    const bcss = [...doc.querySelectorAll("style")].map(e => e.textContent).join("\n");
+    const ruleFor = sel => {
+      const i = bcss.indexOf(sel + "{");
+      return i < 0 ? "" : bcss.slice(i, bcss.indexOf("}", i));
+    };
+    T("31-19 윗줄은 줄바꿈된다(nowrap 아님)",
+      /flex-wrap:\s*wrap/.test(ruleFor(".pk-row")) &&
+      !/white-space:\s*nowrap/.test(ruleFor(".pk-row")), ruleFor(".pk-row"));
+    T("31-20 글자가 제 요소라 접힐 수 있다",
+      doc.querySelector("#pickBanner .pk-lbl") !== null &&
+      doc.querySelector("#pickBanner .pk-lbl #pickCount") !== null);
+    T("31-21 폭을 max-content 로 잡아 기둥이 되지 않는다",
+      /width:\s*max-content/.test(ruleFor("#pickBanner")) &&
+      /max-width:\s*min\(/.test(ruleFor("#pickBanner")), ruleFor("#pickBanner").slice(0, 200));
+    T("31-22 본문이 길면 배너가 아니라 본문칸이 스크롤한다",
+      /max-height:\s*\d+px/.test(ruleFor("#pickResBody")) &&
+      /overflow-y:\s*auto/.test(ruleFor("#pickResBody")), ruleFor("#pickResBody"));
+    E("callClaude = window.__realCallClaude;");   // 전역 교체를 되돌린다
+    E("exitEventPick(); clearSel(); renderAll();");
   }
 
   done();

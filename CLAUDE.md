@@ -20,7 +20,7 @@ README.md              배포 안내 (관리자용)
 
 ```bash
 npm install        # jsdom 하나뿐
-npm test           # 7개 파일 · 563개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
+npm test           # 7개 파일 · 588개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
 npm run check      # index.html 안의 스크립트 문법 검사
 ```
 
@@ -87,7 +87,8 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - **연결선이 카드 위에 있는 것처럼 보이면 쌓임 순서가 아니라 카드 투명도를 볼 것.** `#edgeSvg` 는 `#nodes` 보다 앞에 있고 `.node` 는 `z-index:1` 이상이라 선은 **언제나** 카드 아래에 그려진다(실제 Chrome 에서 보통·펼침·선택·최상단·검색강조·관계선택 여섯 상태 모두 확인). 예전에 선이 위에 있어 보였던 이유는 보통 카드 배경이 반투명이었기 때문 — 다크 `.65`, 라이트/세피아 `.15` 라 뒤의 선이 그대로 비쳤다. 그래서 `.node` 는 `linear-gradient(var(--c-bg), var(--c-bg)), var(--bg2)` 로 **타입 색조를 불투명 바탕 위에 얹는다**. `background:var(--c-bg)` 처럼 되돌리지 말 것. `.e-detail` 도 같은 이유로 `--glass` 가 아니라 `--bg2` 를 쓴다.
 - 노드보다 위에 그리는 선은 스냅 가이드(`.gv/.gh`, z-index 6)와 마퀴 상자(`#marquee`, 16)뿐이다. 이 둘은 조작 중에만 보이는 안내선이라 의도된 것이다.
 - 연결선은 노드 테두리에서 절단된다(`trimQuad`, 이분 탐색). 노드 크기·위치를 바꾸는 코드는 `renderEdges()` 또는 `updateEdgesFor()`를 다시 불러야 절단이 맞는다.
-- AI 사건 생성은 노드 선택 모드(`evPick`, `#pickBanner`)로 동작한다. 선택 모드 중 노드 클릭은 펼침이 아니라 선택 토글이다.
+- AI 사건 생성은 노드 선택 모드(`evPick`, `#pickBanner`)로 동작한다. 선택 모드 중 노드 클릭은 펼침이 아니라 선택 토글이다. **생성은 연표에 바로 넣지 않는다** — `evPick.result` 에 들고 있다가 `addPickedEvent()`(＋ 연표에 추가)에서만 `commit()` 한다. `#pickTime` 에 적은 시점은 프롬프트에서 못박고 결과에도 그대로 쓴다(AI 가 준 time 보다 우선). ↻ 다시 생성은 직전 본문을 프롬프트에 넣어 다른 사건을 요구한다.
+- **`#pickBanner` 는 `width:max-content` + `max-width:min(...)` 로 폭을 잡는다.** `flex-wrap:wrap` 만 주면 절대 배치 요소의 shrink-to-fit 이 최소 폭까지 쪼그라들어 좁은 창에서 210px 짜리 기둥이 된다. 반대로 `white-space:nowrap` 이면 420px 창에서 윗줄이 잘려 ESC 취소 버튼에 손이 닿지 않는다(실측 504px > 346px). 둘 다 jsdom 으로는 안 잡히니 헤드리스 Chrome 으로 잴 것.
 - `sel`은 항상 `{nodeIds:배열, edgeId}` 형태여야 한다. `nodeId`(단수)로 잘못 쓰면 `isSel`이 `undefined.includes`로 죽고, `renderNodes`는 `nodesEl.innerHTML=''` 직후 예외로 중단되어 **노드가 화면에서 전부 사라진다**(새로고침 전까지). 선택 해제는 `clearSel()`을 쓸 것.
 - 최상위 `let/const/function`은 `window` 속성이 아니다. 테스트에서 상태는 `win.eval('tabs')`처럼 접근한다 (`tests/helpers.js`의 `E`).
 - `hidden` 속성이 있는 요소에 CSS `display:flex`를 주면 숨김이 깨진다. 전역 규칙 `[hidden]{display:none!important}`가 있으니 유지할 것.

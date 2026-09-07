@@ -293,11 +293,23 @@ body.edit div.eo,body.edit span.eo{display:flex}
 #linkBanner button:hover,#pickBanner button:hover{color:var(--text);border-color:var(--border2)}
 #pickBanner{
   position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:20;
-  display:flex;align-items:center;gap:9px;
-  background:var(--glass);border:1px solid var(--gold);border-radius:24px;
+  display:flex;flex-direction:column;align-items:stretch;gap:9px;
+  width:max-content;max-width:min(600px, calc(100vw - 40px));
+  background:var(--glass);border:1px solid var(--gold);border-radius:20px;
   padding:9px 16px;font-size:13px;color:var(--gold2);box-shadow:var(--shadow);
-  backdrop-filter:blur(6px);white-space:nowrap;
+  backdrop-filter:blur(6px);
 }
+.pk-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.pk-lbl{flex:1 1 auto;min-width:0}
+#pickTime{flex:0 0 132px;width:132px;font-size:12px;padding:3px 9px;border-radius:12px;
+  background:var(--bg3);border:1px solid var(--border);color:var(--text)}
+/* 만든 사건을 확인하고 넣는다 — 바로 연표에 밀어넣지 않는다 */
+#pickResult{display:flex;flex-direction:column;gap:7px;white-space:normal;
+  border-top:1px solid var(--line-faint);padding-top:9px}
+#pickResTime{font-size:11.5px;color:var(--text3)}
+#pickResBody{font-size:13px;line-height:1.7;color:var(--text);word-break:keep-all;
+  max-height:190px;overflow-y:auto}
+.pk-acts{display:flex;gap:7px;justify-content:flex-end}
 #pickBanner b{font-variant-numeric:tabular-nums}
 #pickBanner button.go{color:var(--gold2);border-color:var(--gold)}
 #pickBanner button.go:hover{background:rgba(212,169,71,.14)}
@@ -659,8 +671,18 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
       <div class="guide gh" id="guideH" hidden></div>
     </div>
     <div id="linkBanner" hidden>🔗 관계를 연결할 대상 노드를 클릭하세요 <button id="linkCancel">ESC 취소</button></div>
-    <div id="pickBanner" hidden>📜 사건에 등장할 노드를 클릭·Ctrl+드래그로 선택하세요 — <b id="pickCount">0</b>개
-      <button id="pickGo" class="go">✨ 생성</button><button id="pickCancel">ESC 취소</button></div>
+    <div id="pickBanner" hidden>
+      <div class="pk-row"><span class="pk-lbl">📜 등장할 노드를 클릭·Ctrl+드래그로 선택 — <b id="pickCount">0</b>개</span>
+        <input id="pickTime" placeholder="시점 (선택)" maxlength="40" spellcheck="false">
+        <button id="pickGo" class="go">✨ 생성</button><button id="pickCancel">ESC 취소</button></div>
+      <div id="pickResult" hidden>
+        <div id="pickResTime"></div>
+        <div id="pickResBody"></div>
+        <div class="pk-acts">
+          <button id="pickAgain">↻ 다시 생성</button>
+          <button id="pickAdd" class="go">＋ 연표에 추가</button></div>
+      </div>
+    </div>
     <button id="btnSearch" title="노드 검색 (Ctrl+F)">🔍</button>
     <div id="searchBar" hidden>
       <input id="searchInput" placeholder="노드 이름·설명 검색" maxlength="60" spellcheck="false">
@@ -903,7 +925,7 @@ let lsLoadFailed = false;          // 로컬 데이터 파싱 실패 시 덮어�
 let sel = {nodeIds:[], edgeId:null};   // 다중 선택
 const isSel = id => sel.nodeIds.includes(id);
 function clearSel(){ sel = {nodeIds:[], edgeId:null}; }
-let evPick = {active:false, busy:false}; // AI 사건 생성 — 노드 선택 모드
+let evPick = {active:false, busy:false, result:null}; // AI 사건 생성 — 노드 선택 모드 (result = 확정 전 사건)
 let spaceHeld = false;                   // Space+드래그 = 팬 강제(Ctrl 마퀴보다 우선)
 let lastPointer = null;                  // 캔버스 기준 마지막 마우스 위치(Tab 노드 생성 지점)
 let altSolo = false;                     // Alt를 단독으로 눌렀다 뗐는가(Alt+Tab 등 조합 제외)
@@ -4395,16 +4417,19 @@ function startEventPick(){
   if(!reqEdit()) return;
   if(linkMode.active) exitLink();
   clearSel(); renderAll();
-  evPick = {active:true, busy:false};
+  evPick = {active:true, busy:false, result:null};
+  $('#pickTime').value = '';
   pickBannerEl.hidden = false;
   updatePickBanner();
-  toast('사건에 등장할 노드들을 선택한 뒤 ✨ 생성을 눌러주세요');
+  toast('등장할 노드들을 선택한 뒤 ✨ 생성을 눌러주세요 — 시점은 비워 두면 AI 가 정합니다');
 }
 function exitEventPick(){
-  evPick = {active:false, busy:false};
+  evPick = {active:false, busy:false, result:null};
   if(pickBannerEl) pickBannerEl.hidden = true;
   const b = $('#pickGo');
   if(b){ b.disabled = false; b.textContent = '✨ 생성'; }
+  const r = $('#pickResult');
+  if(r) r.hidden = true;
 }
 function togglePick(id){
   sel.edgeId = null;
@@ -4415,7 +4440,37 @@ function togglePick(id){
 function updatePickBanner(){
   const c = $('#pickCount'), b = $('#pickGo');
   if(c) c.textContent = sel.nodeIds.length;
-  if(b) b.disabled = evPick.busy || !sel.nodeIds.length;
+  if(b){
+    b.disabled = evPick.busy || !sel.nodeIds.length;
+    /* 결과가 떠 있으면 아래의 '다시 생성' 이 같은 일을 하므로 위 버튼은 숨긴다 */
+    b.hidden = !!evPick.result;
+  }
+  const r = $('#pickResult');
+  if(!r) return;
+  r.hidden = !evPick.result;
+  if(evPick.result){
+    $('#pickResTime').textContent = evPick.result.time || '시점 미상';
+    $('#pickResBody').textContent = evPick.result.body || '';
+    $('#pickAgain').disabled = evPick.busy;
+    $('#pickAdd').disabled = evPick.busy;
+  }
+}
+/* 확인한 사건을 연표에 넣는다 */
+function addPickedEvent(){
+  if(!evPick.result || !reqEdit()) return;
+  const tab = curTab(); if(!tab) return;
+  const r = evPick.result;
+  tab.events.push({
+    id: gid(),
+    time: String(r.time || ''),
+    body: String(r.body || ''),
+    order: Number.isFinite(+r.order) ? Math.round(+r.order) : maxOrder(tab) + 10
+  });
+  commit();
+  exitEventPick();
+  clearSel(); renderAll();
+  if(rpCur !== 'events') openPanel('events'); else renderEvents();
+  toast('사건 연표에 추가했습니다');
 }
 
 async function runEventPick(){
@@ -4426,6 +4481,11 @@ async function runEventPick(){
   evPick.busy = true;
   const btn = $('#pickGo');
   btn.disabled = true; btn.textContent = '생성 중…';
+  if(evPick.result) $('#pickAgain').textContent = '만드는 중…';
+  updatePickBanner();
+  /* 시점을 적었으면 그대로 쓴다. 다시 생성일 때는 직전 사건과 다른 것을 요구한다. */
+  const wantTime = String($('#pickTime').value || '').trim().slice(0, 40);
+  const prev = evPick.result;
   try{
     const c = buildCtx(tab);
     const sys = worldSystem(tab) +
@@ -4436,28 +4496,32 @@ async function runEventPick(){
       picked.map(p => `- ${p.name} (${typeLabel(tab, p.type)})${p.desc ? ': ' + p.desc : ''}`).join('\n') + `\n` +
       `- 선택된 노드 전부가 자연스럽게 얽히도록 하라.\n` +
       `- 그 외 등장 대상도 위 "사용 가능한 이름" 목록 안에서만 고른다.\n` +
+      (wantTime
+        ? `- 사건의 시점은 반드시 "${wantTime}" 다. time 필드에 그대로 쓰고, 그 시점에 어울리는 내용으로 만들어라.\n`
+        : `- 시점(time)은 세계관의 다른 사건들과 어울리게 네가 정하라.\n`) +
+      (prev
+        ? `- 아래는 직전에 만들었다가 사용자가 물린 사건이다. 이것과 뚜렷하게 다른 사건을 만들어라.\n  "${String(prev.body).slice(0, 300)}"\n`
+        : '') +
       `- 기존 사건들과 시간 흐름이 자연스럽게 이어지도록 order 정수를 정하라. 기존 사건 사이에 끼워 넣어도 된다.\n` +
       `- 다른 설명 없이 아래 JSON 형식만 출력하라:\n` +
       `{"time":"자유 형식 시간 표현","body":"사건 내용 2~4문장","order":정수}`;
     const raw = await callClaude(sys, [{role:'user', content:user}], 2000, {effort:'low', label:'사건 생성'});
     const parsed = parseAIJson(raw, 'object');
     if(!parsed || !parsed.body) throw new Error('AI 응답을 해석하지 못했습니다. 다시 시도해주세요.');
-    tab.events.push({
-      id: gid(),
-      time: String(parsed.time || ''),
+    /* 바로 넣지 않는다 — 읽어 보고 [＋ 연표에 추가] 를 눌러야 확정된다 */
+    evPick.result = {
+      time: wantTime || String(parsed.time || ''),
       body: String(parsed.body),
       order: Number.isFinite(+parsed.order) ? Math.round(+parsed.order) : maxOrder(tab) + 10
-    });
-    commit();
-    exitEventPick();
-    clearSel(); renderAll();
-    if(rpCur !== 'events') openPanel('events'); else renderEvents();
-    toast(`선택한 노드 ${picked.length}개를 바탕으로 사건을 추가했습니다`);
+    };
   }catch(err){
     toast(err.message, true);
+  }finally{
     evPick.busy = false;
-    updatePickBanner();
     btn.textContent = '✨ 생성';
+    const ag = $('#pickAgain');
+    if(ag) ag.textContent = '↻ 다시 생성';
+    updatePickBanner();
   }
 }
 /* ==================================================================
@@ -5526,6 +5590,12 @@ function bindStaticUI(){
   $('#linkCancel').onclick = exitLink;
   $('#btnUndo').onclick = doUndo;
   $('#pickGo').onclick = runEventPick;
+  $('#pickAgain').onclick = runEventPick;
+  $('#pickAdd').onclick = addPickedEvent;
+  $('#pickTime').addEventListener('keydown', e => {
+    e.stopPropagation();                       // 캔버스 단축키·검색 가로채기 차단
+    if(e.key === 'Enter'){ e.preventDefault(); runEventPick(); }
+  });
   $('#pickCancel').onclick = () => { exitEventPick(); clearSel(); renderAll(); };
   $('#aiAccept').onclick = acceptPreview;
   $('#aiRetry').onclick = () => {
