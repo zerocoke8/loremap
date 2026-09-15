@@ -2518,5 +2518,175 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     E("closeCtx();");
   }
 
+  /* ---- 36. 탭 길게 눌러 순서 바꾸기 · 단축키 도움말 ---- */
+  {
+    E("clearSel(); closePanel(); exitEventPick(); [...modalsEl.querySelectorAll('.ov')].forEach(closeModal);");
+    /* 기존 프로젝트 탭 셋 사이에 다른 프로젝트 탭 하나가 끼어 있다 */
+    const setup = () => {
+      E("tabs = [" +
+        "sanitizeTab({id:'q1', title:'하나', nodes:[], edges:[], events:[], worldPrompt:''})," +
+        "sanitizeTab({id:'x1', title:'딴곳', project:'다른', nodes:[], edges:[], events:[], worldPrompt:''})," +
+        "sanitizeTab({id:'q2', title:'둘', nodes:[], edges:[], events:[], worldPrompt:''})," +
+        "sanitizeTab({id:'q3', title:'셋', nodes:[], edges:[], events:[], worldPrompt:''})" +
+        "]; activeTabId = 'q1'; setEditMode(true); undoStack = []; redoStack = []; lastState = null; seedUndo(); renderTabs(); renderAll();");
+    };
+    setup(); await wait(40);
+    const ids = () => E("tabs.map(t => t.id).join(',')");
+    const barIds = () => [...doc.querySelectorAll("#tabs .tab")].map(e => e.dataset.id).join(",");
+
+    /* --- 옮기는 규칙 --- */
+    T("36-1 탭 요소에 id 가 붙는다", barIds() === "q1,q2,q3", barIds());
+    T("36-2 끝으로 옮기면 true", E("moveTab('q1', 2)") === true);
+    T("36-3 다른 프로젝트 탭의 자리는 그대로 — 이 프로젝트 자리 안에서만 바뀐다", ids() === "q2,x1,q3,q1", ids());
+    T("36-4 탭 줄도 새 순서", barIds() === "q2,q3,q1", barIds());
+    T("36-5 순서 바꾸기는 구조 되돌리기에 쌓인다", E("undoStack.length") === 1);
+    E("doUndo()"); await wait(40);
+    T("36-6 Ctrl+Z 로 원래 순서", ids() === "q1,x1,q2,q3", ids());
+    E("doRedo()"); await wait(40);
+    T("36-7 다시 실행", ids() === "q2,x1,q3,q1", ids());
+    setup(); await wait(30);
+    const stackBefore = E("undoStack.length");
+    T("36-8 제자리면 false 이고 되돌리기 항목도 없다", E("moveTab('q2', 1)") === false && E("undoStack.length") === stackBefore);
+    T("36-9 범위를 넘으면 끝으로", E("moveTab('q1', 99)") === true && ids() === "q2,x1,q3,q1", ids());
+    T("36-10 없는 탭은 false", E("moveTab('없음', 0)") === false);
+    E("setEditMode(false)");
+    T("36-11 보기 전용은 못 옮긴다", E("moveTab('q1', 0)") === false && ids() === "q2,x1,q3,q1");
+    E("setEditMode(true)");
+
+    /* --- 줄바꿈된 탭 줄에서 놓을 자리 --- */
+    T("36-12 둘째 줄 맨 앞에 대면 윗줄 끝(=그 탭 앞)", (() => {
+      setup();
+      const els = [...doc.querySelectorAll("#tabs .tab")];
+      const box = (l, t) => () => ({left:l, right:l + 100, top:t, bottom:t + 30, width:100, height:30});
+      els[0].getBoundingClientRect = box(0, 0);      // q1 — 끄는 탭
+      els[1].getBoundingClientRect = box(104, 0);    // q2 윗줄
+      els[2].getBoundingClientRect = box(0, 40);     // q3 아랫줄
+      const b = E("tabDropAt(10, 55, 'q1')");
+      return b && b.k === 1 && b.top === 40;
+    })());
+
+    /* --- 길게 눌러 끌기 --- */
+    const PE = (type, x, y) => new w.PointerEvent(type, {bubbles:true, cancelable:true, clientX:x, clientY:y, button:0});
+    const tabEl = id => [...doc.querySelectorAll("#tabs .tab")].find(e => e.dataset.id === id);
+    const layout = () => [...doc.querySelectorAll("#tabs .tab")].forEach((el, i) => {
+      el.getBoundingClientRect = () => ({left:i * 104, right:i * 104 + 100, top:0, bottom:30, width:100, height:30});
+    });
+    setup(); E("switchTab('q2')"); await wait(30); layout();
+    tabEl("q1").querySelector(".tt").dispatchEvent(PE("pointerdown", 50, 15));
+    await wait(200);
+    T("36-13 짧게 누르는 동안은 들리지 않는다", !tabEl("q1").classList.contains("lift") && E("tabDrag && !tabDrag.lifted") === true);
+    await wait(380);
+    T("36-14 0.5초 누르면 들린다", tabEl("q1").classList.contains("lift") && doc.body.classList.contains("tab-moving"));
+    T("36-15 놓을 자리 표시선이 보인다", doc.getElementById("tabDrop").hidden === false);
+    w.dispatchEvent(PE("pointermove", 300, 15));
+    T("36-16 끄는 대로 놓을 자리가 바뀐다", E("tabDrag.to") === 2, E("tabDrag.to"));
+    w.dispatchEvent(PE("pointerup", 0, 0));          // 좌표 없는 pointerup 이 와도 마지막 자리로
+    T("36-17 놓으면 그 자리로 옮겨진다", ids() === "q2,x1,q3,q1", ids());
+    T("36-18 들기 표시가 모두 걷힌다", E("tabDrag") === null && !doc.body.classList.contains("tab-moving") &&
+      doc.getElementById("tabDrop").hidden === true && !doc.querySelector("#tabs .tab.lift"));
+    tabEl("q1").querySelector(".tt").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    T("36-19 놓은 손이 뗀 클릭은 탭을 바꾸지 않는다", E("activeTabId") === "q2");
+    tabEl("q1").querySelector(".tt").dispatchEvent(new w.MouseEvent("dblclick", {bubbles:true}));
+    T("36-20 더블클릭 이름 변경 창도 뜨지 않는다", !doc.querySelector(".ov"));
+    await wait(450);
+    tabEl("q3").querySelector(".tt").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    T("36-21 잠시 뒤의 클릭은 평소대로", E("activeTabId") === "q3");
+    E("doUndo()"); await wait(40);
+    T("36-22 끌어 옮긴 것도 되돌리기 한 단계", ids() === "q1,x1,q2,q3", ids());
+
+    /* 짧게 누르면 평소 클릭 */
+    setup(); await wait(30); layout();
+    tabEl("q3").querySelector(".tt").dispatchEvent(PE("pointerdown", 260, 15));
+    await wait(120);
+    w.dispatchEvent(PE("pointerup", 260, 15));
+    tabEl("q3").querySelector(".tt").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(450);
+    T("36-23 짧게 누르면 그냥 탭 바꾸기", E("activeTabId") === "q3" && E("tabDrag") === null && ids() === "q1,x1,q2,q3");
+
+    /* 들기 전에 움직이면 취소 */
+    layout();
+    tabEl("q2").querySelector(".tt").dispatchEvent(PE("pointerdown", 150, 15));
+    w.dispatchEvent(PE("pointermove", 185, 15));
+    await wait(560);
+    T("36-24 들기 전에 10px 넘게 움직이면 들지 않는다", E("tabDrag") === null && !doc.querySelector("#tabs .tab.lift"));
+    w.dispatchEvent(PE("pointerup", 185, 15));
+
+    /* ESC 로 내려놓기 */
+    layout();
+    tabEl("q2").querySelector(".tt").dispatchEvent(PE("pointerdown", 150, 15));
+    await wait(560);
+    w.dispatchEvent(PE("pointermove", 0, 15));
+    T("36-25 (들린 상태에서 맨 앞을 가리킨다)", E("tabDrag && tabDrag.lifted && tabDrag.to") === 0);
+    doc.dispatchEvent(new w.KeyboardEvent("keydown", {key:"Escape", bubbles:true}));
+    T("36-26 ESC 는 옮기지 않고 내려놓는다", E("tabDrag") === null && ids() === "q1,x1,q2,q3" && !doc.body.classList.contains("tab-moving"));
+    w.dispatchEvent(PE("pointerup", 0, 15));
+    T("36-27 그 뒤 손을 떼도 옮겨지지 않는다", ids() === "q1,x1,q2,q3");
+    await wait(450);
+
+    /* 옮길 데가 없거나 보기 전용이면 누르기 자체를 받지 않는다 */
+    E("switchTab('x1')"); await wait(30);
+    tabEl("x1").querySelector(".tt").dispatchEvent(PE("pointerdown", 50, 15));
+    T("36-28 탭이 하나뿐인 프로젝트는 들지 않는다", E("tabDrag") === null);
+    w.dispatchEvent(PE("pointerup", 50, 15));
+    E("switchTab('q1'); setEditMode(false);"); await wait(30);
+    tabEl("q1").querySelector(".tt").dispatchEvent(PE("pointerdown", 50, 15));
+    T("36-29 보기 전용은 들지 않는다", E("tabDrag") === null);
+    w.dispatchEvent(PE("pointerup", 50, 15));
+    E("setEditMode(true)");
+
+    /* --- 도움말 --- */
+    const zh = doc.getElementById("zHelp");
+    T("36-30 오른쪽 아래 확대·축소 버튼 줄 맨 아래에 ? 버튼", zh !== null && zh.parentElement.id === "zoomCtl" &&
+      zh.parentElement.lastElementChild === zh && zh.textContent === "?");
+    zh.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(30);
+    const help = () => doc.querySelector(".ov .dlg.help");
+    T("36-31 누르면 단축키 창이 뜬다", help() !== null && help().querySelector(".dlg-h span").textContent === "단축키 · 조작법");
+    T("36-32 묶음마다 제목", help().querySelectorAll(".keys section").length === E("HELP_KEYS.length") &&
+      E("HELP_KEYS.length") >= 6);
+    const helpText = () => help().textContent;
+    const caps = () => [...help().querySelectorAll("kbd")].map(k => k.textContent);
+    T("36-33 코드에 있는 키보드 단축키가 모두 적혀 있다", (() => {
+      const c = caps();
+      return ["Tab", "Esc", "Delete", "Alt", "?", "Enter", "Shift", "Ctrl", "F", "C", "V", "Z", "Y"].every(k => c.includes(k));
+    })(), caps());
+    T("36-34 마우스 동작은 키캡이 아니라 글로", !caps().includes("클릭") && helpText().includes("클릭"));
+    T("36-35 탭 옮기기도 적혀 있다", helpText().includes("길게 누르기") && helpText().includes("순서 바꾸기"));
+    T("36-36 편집 전용에는 편집 표시", help().querySelectorAll(".kr.ed .kbadge").length > 0 &&
+      help().querySelectorAll(".kr.ed").length === E("HELP_KEYS.flatMap(g => g[1]).filter(r => r[2]).length"));
+    T("36-37 편집 모드에서는 흐리게 하지 않는다", !help().querySelector(".keys.view"));
+    doc.dispatchEvent(new w.KeyboardEvent("keydown", {key:"?", shiftKey:true, bubbles:true}));
+    T("36-38 창이 떠 있으면 ? 로 또 열지 않는다", doc.querySelectorAll(".ov .dlg.help").length === 1);
+    doc.dispatchEvent(new w.KeyboardEvent("keydown", {key:"Escape", bubbles:true}));
+    T("36-39 ESC 로 닫힌다", help() === null);
+
+    doc.dispatchEvent(new w.KeyboardEvent("keydown", {key:"?", shiftKey:true, bubbles:true}));
+    T("36-40 ? 키로도 열린다", help() !== null);
+    E("[...modalsEl.querySelectorAll('.ov')].forEach(closeModal);");
+    T("36-41 입력 중의 ? 는 글자다", (() => {
+      const inp = doc.createElement("input"); doc.body.appendChild(inp); inp.focus();
+      inp.dispatchEvent(new w.KeyboardEvent("keydown", {key:"?", shiftKey:true, bubbles:true}));
+      const opened = help() !== null;
+      inp.remove();
+      return !opened;
+    })());
+
+    E("setEditMode(false)");
+    zh.dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    T("36-42 보기 전용도 열 수 있고, 편집 전용 줄은 흐리게", help() !== null && help().querySelector(".keys.view") !== null &&
+      helpText().includes("보기 전용"));
+    E("[...modalsEl.querySelectorAll('.ov')].forEach(closeModal); setEditMode(true);");
+
+    T("36-43 맥에서는 Ctrl 대신 ⌘", (() => {
+      const had = Object.getOwnPropertyDescriptor(w.navigator, "platform");
+      Object.defineProperty(w.navigator, "platform", {value:"MacIntel", configurable:true});
+      E("openHelp()");
+      const ok = caps().includes("⌘") && !helpText().includes("Ctrl");
+      E("[...modalsEl.querySelectorAll('.ov')].forEach(closeModal);");
+      if(had) Object.defineProperty(w.navigator, "platform", had); else delete w.navigator.platform;
+      return ok;
+    })());
+  }
+
   done();
 })();

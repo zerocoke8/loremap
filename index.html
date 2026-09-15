@@ -148,6 +148,13 @@ textarea{resize:vertical;line-height:1.55}
 .tab .tt{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
 .tab.act{background:var(--surface2);color:var(--text);border-color:var(--border2);box-shadow:0 -2px 12px rgba(124,106,247,.12) inset}
 .tab.act .tt{font-weight:500}
+/* 탭 길게 눌러 옮기기 — 누르는 동안 글자 선택·길게 누르기 메뉴·터치 스크롤이 끼어들지 않게 */
+.tab{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+body.edit .tab{touch-action:none}
+.tab.lift{opacity:.55;outline:2px dashed var(--accent);outline-offset:-2px}
+body.tab-moving{user-select:none;-webkit-user-select:none}
+body.tab-moving,body.tab-moving *{cursor:grabbing!important}
+#tabDrop{position:fixed;width:3px;border-radius:2px;background:var(--accent);box-shadow:0 0 8px var(--accent);z-index:60;pointer-events:none}
 .tacts{display:none;gap:1px;margin-left:4px}
 body.edit .tab:hover .tacts,body.edit .tab.act .tacts{display:inline-flex}
 .ta{font-size:11px;color:var(--text3);padding:2px 4px;border-radius:5px;line-height:1}
@@ -394,6 +401,23 @@ body.edit div.eo,body.edit span.eo{display:flex}
   backdrop-filter:blur(5px);
 }
 #zoomCtl button:hover{border-color:var(--accent);color:var(--text)}
+#zoomCtl #zHelp{margin-top:6px;border-radius:50%;font-size:15px;font-weight:700}
+/* 단축키 도움말 창 */
+.dlg.help{width:min(780px,100%)}
+/* 격자가 아니라 단(columns) — 격자는 옆 묶음 높이에 맞춰 줄을 맞춰서 짧은 묶음 아래가 크게 빈다 */
+.keys{columns:300px 2;column-gap:26px}
+.keys section{break-inside:avoid;margin-bottom:16px}
+.keys section:last-child{margin-bottom:0}
+.keys h4{margin:0 0 4px;font-size:12px;font-weight:700;color:var(--gold2)}
+.kr{display:flex;align-items:center;gap:10px;padding:5px 0;border-top:1px solid var(--border)}
+.kk{flex:0 0 118px;display:flex;flex-wrap:wrap;align-items:center;gap:3px;font-size:12px;color:var(--text2)}
+.kk i{font-style:normal;color:var(--text3);font-size:11px}
+.kd{flex:1;min-width:0;font-size:12.5px;line-height:1.5;color:var(--text2)}
+kbd{display:inline-block;min-width:22px;padding:0 6px;border:1px solid var(--border2);border-bottom-width:2px;border-radius:6px;
+  background:var(--bg3);color:var(--text);font-family:inherit;font-size:11.5px;font-weight:600;line-height:19px;text-align:center;white-space:nowrap}
+.kbadge{display:inline-block;margin-left:6px;padding:0 5px;border:1px solid var(--accent);border-radius:5px;
+  color:var(--accent2);font-size:10.5px;line-height:16px;vertical-align:1px;white-space:nowrap}
+.keys.view .kr.ed{opacity:.5}
 #aiPanel{
   position:absolute;right:16px;bottom:16px;z-index:24;width:250px;
   background:var(--glass);border:1px solid var(--gold);border-radius:14px;
@@ -680,6 +704,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
   <div class="logo">LOREMAP</div>
   <button id="projBtn" class="proj-btn" title="프로젝트 바꾸기">📁 <span id="projName"></span> <span class="proj-cv">▾</span></button>
   <div id="tabs"></div>
+  <div id="tabDrop" hidden></div>
   <div class="tabacts">
     <button id="tabAdd" class="tabadd eo" title="세계관 추가">＋</button>
     <button id="tabDup" class="tabadd eo" title="현재 세계관 복제">⧉</button>
@@ -750,6 +775,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
       <button id="zIn" title="확대">＋</button>
       <button id="zOut" title="축소">−</button>
       <button id="zFit" title="전체 맞춤">⤢</button>
+      <button id="zHelp" title="단축키 도움말 (?)">?</button>
     </div>
   </div>
 
@@ -3145,6 +3171,78 @@ function onCanvasFocus(){
   const a = document.activeElement;
   return !a || a === document.body || (wrapEl && wrapEl.contains(a));
 }
+/* ---------------- 단축키 도움말 (오른쪽 아래 ? 버튼 · ? 키) ----------------
+   ⚠ 여기 적는 것은 코드에 실제로 있는 조작만이다. 단축키를 더하거나 바꾸면 이 표도 함께 고칠 것.
+   행 = [키 목록, 설명, 편집 전용이면 1]. 키는 + 로 잇고(함께 누름), 사이에 '/' 를 넣으면 '또는'.
+   HELP_PLAIN 에 든 말은 키캡이 아니라 글로 보인다(마우스 동작). */
+const HELP_PLAIN = new Set(['클릭', '더블클릭', '드래그', '우클릭', '휠', '길게 누르기', '속성:값']);
+const HELP_KEYS = [
+  ['캔버스', [
+    [['드래그'], '빈 곳을 끌어 화면 이동'],
+    [['휠'], '확대 · 축소'],
+    [['Ctrl', '드래그'], '빈 곳에서 상자를 그려 여러 노드 선택', 1],
+    [['Tab'], '커서 위치에 새 노드', 1],
+    [['Esc'], '메뉴 · 검색 · 창 닫기, 선택 해제']
+  ]],
+  ['노드', [
+    [['클릭'], '펼치기 + 노드 상세'],
+    [['Ctrl', '클릭'], '선택에 더하기 · 빼기 (Shift 도 같음)'],
+    [['드래그'], '옮기기 — 선택한 노드는 묶음째', 1],
+    [['Shift', '드래그'], '이웃 노드에 줄 맞춰 붙이기', 1],
+    [['우클릭'], '노드 메뉴 (길게 눌러도 열림)'],
+    [['Alt'], '노드 하나를 고르고 눌렀다 떼면 관계 잇기 → 이을 노드 클릭', 1],
+    [['Delete'], '선택한 노드 · 관계 삭제 (Backspace 도 같음)', 1]
+  ]],
+  ['관계선', [
+    [['클릭'], '상세 카드 열기 · 닫기'],
+    [['우클릭'], '관계 메뉴 (길게 눌러도 열림)']
+  ]],
+  ['복사 · 되돌리기', [
+    [['Ctrl', 'C'], '선택한 노드 복사 (그림으로도 복사됨)'],
+    [['Ctrl', 'V'], '복사한 노드 붙여넣기', 1],
+    [['Ctrl', 'Z'], '되돌리기', 1],
+    [['Ctrl', 'Y'], '다시 실행 (Ctrl+Shift+Z 도 같음)', 1]
+  ]],
+  ['검색', [
+    [['Ctrl', 'F'], '노드 검색 열기'],
+    [['Enter'], '찾기 · 다음 결과'],
+    [['Shift', 'Enter'], '이전 결과'],
+    [['↑', '/', '↓'], '결과 사이 이동'],
+    [['속성:값'], '그 속성에서만 찾기 (예: 계열:화염)']
+  ]],
+  ['탭', [
+    [['클릭'], '탭 바꾸기'],
+    [['더블클릭'], '이름 · 프로젝트 바꾸기', 1],
+    [['길게 누르기'], '끌어서 순서 바꾸기', 1]
+  ]],
+  ['목차 · 노드 상세 · 대화', [
+    [['클릭'], '목차: 그 노드로 이동'],
+    [['더블클릭'], '목차: 노드 상세까지 열기'],
+    [['Ctrl', 'V'], '노드 상세에 이미지 붙여넣기 (끌어다 놓아도 됨)', 1],
+    [['Enter'], '대화 보내기 (Shift+Enter 는 줄바꿈)', 1],
+    [['?'], '이 도움말 열기']
+  ]]
+];
+function openHelp(){
+  const mac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || '');
+  const cmd = s => mac ? s.replace(/Ctrl/g, '⌘') : s;   // 코드가 ctrlKey || metaKey 로 받으므로 맥은 ⌘
+  const cap = k => HELP_PLAIN.has(k) ? `<span>${escHtml(k)}</span>` : `<kbd>${escHtml(cmd(k))}</kbd>`;
+  const rows = HELP_KEYS.map(([group, list]) =>
+    `<section><h4>${escHtml(group)}</h4>` + list.map(([keys, what, eo]) =>
+      `<div class="kr${eo ? ' ed' : ''}"><span class="kk">${keys.map((k, i) => k === '/' ? '<i>/</i>' : (i && keys[i - 1] !== '/' ? '<i>+</i>' : '') + cap(k)).join('')}</span>` +
+      `<span class="kd">${escHtml(cmd(what))}${eo ? '<span class="kbadge">편집</span>' : ''}</span></div>`
+    ).join('') + `</section>`).join('');
+  const ov = openModal({
+    title:'단축키 · 조작법',
+    body:`<div class="keys${editMode ? '' : ' view'}">${rows}</div>` +
+      `<div class="hint"><span class="kbadge">편집</span> 표시는 🔒 편집 모드에서만 동작합니다.` +
+      (editMode ? '' : ' 지금은 보기 전용이라 흐리게 보입니다.') + `</div>`,
+    footer:`<button class="btn" data-a="c">닫기</button>`
+  });
+  ov.querySelector('.dlg').classList.add('help');
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  return ov;
+}
 /* Delete 키 — 선택이 여러 개면 한 번에 확인받는다 (하위 노드는 남긴다) */
 function askDeleteSelection(){
   if(!reqEdit()) return;
@@ -5451,14 +5549,132 @@ function renderTabs(){
   if(pn) pn.textContent = cur;
   tabsIn(cur).forEach(t => {                  // 다른 프로젝트의 탭은 탭 줄에 올리지 않는다
     const el = document.createElement('div');
-    el.className = 'tab' + (t.id === activeTabId ? ' act' : '');
+    el.className = 'tab' + (t.id === activeTabId ? ' act' : '') + (tabDrag?.lifted && tabDrag.id === t.id ? ' lift' : '');
+    el.dataset.id = t.id;
     el.innerHTML =
       `<span class="tt" title="${escHtml(t.title)}">${escHtml(t.title || '무제')}</span>`;
     const tt = el.querySelector('.tt');
-    tt.onclick = () => switchTab(t.id);
-    tt.ondblclick = () => { if(editMode) openRenameTab(t); };   // 이름 변경은 더블클릭
+    const eaten = () => performance.now() < tabClickEatUntil;   // 방금 끌어 옮긴 손이 뗀 클릭
+    tt.onclick = () => { if(!eaten()) switchTab(t.id); };
+    tt.ondblclick = () => { if(editMode && !eaten()) openRenameTab(t); };   // 이름 변경은 더블클릭
     tabsEl.appendChild(el);
   });
+}
+
+/* ---------------- §5-1c 탭 순서 바꾸기 — 길게 누른 뒤 끌어 놓는다 (편집 모드) ----------------
+   다른 프로젝트 탭들이 전체 tabs 배열에서 차지한 자리는 그대로 두고, 이 프로젝트가 차지한
+   자리들 안에서만 순서를 바꾼다 — 탭 줄에 안 보이는 탭이 끼어들거나 프로젝트끼리 섞이지 않는다.
+   순서는 tabIdsKey 에 들어가므로 commit() 한 번이 되돌리기 한 단계(구조 스택)가 되고,
+   fbSyncActive 가 tabList 를 새 순서로 한 번 쓴다. */
+const TAB_HOLD_MS = 500;              // 노드·관계선 롱프레스와 같은 값
+const TAB_EAT_MS = 400;               // 끌기가 끝난 직후 따라오는 click·dblclick 을 삼키는 시간
+let tabDrag = null;                   // {id, sx, sy, lifted, to, timer}
+let tabClickEatUntil = 0;
+
+/* to = 옮긴 뒤 이 프로젝트 안에서의 순번(0부터). 실제로 바뀌었을 때만 true */
+function moveTab(id, to){
+  if(!reqEdit()) return false;
+  const t = tabs.find(x => x.id === id); if(!t) return false;
+  const p = normProject(t.project);
+  const slots = [];                                  // 이 프로젝트 탭들이 tabs 에서 차지한 자리
+  tabs.forEach((x, i) => { if(normProject(x.project) === p) slots.push(i); });
+  const list = slots.map(i => tabs[i]);
+  const from = list.indexOf(t);
+  to = Math.max(0, Math.min(list.length - 1, Math.round(+to) || 0));
+  if(from < 0 || from === to) return false;
+  list.splice(from, 1); list.splice(to, 0, t);
+  slots.forEach((i, k) => { tabs[i] = list[k]; });   // 제자리 교체 — tabs 배열 자체는 그대로
+  commit();
+  renderTabs();
+  return true;
+}
+/* 포인터 위치에서 끼워 넣을 자리(끌고 있는 탭을 뺀 순번 k)와 표시선 위치.
+   탭 줄은 줄바꿈되므로 가로만 보면 안 된다 — 탭마다 왼쪽 끝(그 앞)·오른쪽 끝(그 뒤)을 후보로 두고
+   세로 거리에 무게를 줘 가장 가까운 것을 고른다. 윗줄 끝과 아랫줄 처음은 같은 k 라 어느 쪽이든 맞다. */
+function tabDropAt(x, y, id){
+  const others = [...tabsEl.querySelectorAll('.tab')].filter(el => el.dataset.id !== id);
+  let best = null;
+  others.forEach((el, j) => {
+    const r = el.getBoundingClientRect();
+    const my = (r.top + r.bottom) / 2;
+    [[r.left, j], [r.right, j + 1]].forEach(([cx, k]) => {
+      const d = Math.abs(x - cx) + Math.abs(y - my) * 3;
+      if(!best || d < best.d) best = {d, k, x: cx, top: r.top, h: r.height};
+    });
+  });
+  return best;
+}
+function tabElOf(id){ return [...tabsEl.querySelectorAll('.tab')].find(el => el.dataset.id === id) || null; }
+function bindTabDrag(){
+  tabsEl.addEventListener('pointerdown', e => {
+    if(!editMode || tabDrag || e.button !== 0) return;
+    const el = e.target.closest?.('.tab');
+    if(!el || !tabsEl.contains(el)) return;
+    if(tabsIn(curProject()).length < 2) return;       // 옮길 자리가 없다
+    const d = tabDrag = {id: el.dataset.id, sx: e.clientX, sy: e.clientY, lifted: false, to: -1};
+    d.timer = setTimeout(() => liftTab(d), TAB_HOLD_MS);
+    window.addEventListener('pointermove', onTabDragMove);
+    window.addEventListener('pointerup', onTabDragUp);
+    window.addEventListener('pointercancel', cancelTabDrag);
+  });
+  /* 터치로 길게 누르면 브라우저가 contextmenu 를 띄운다 — 누르고 있는 동안만 막는다(평소 우클릭은 그대로) */
+  tabsEl.addEventListener('contextmenu', e => { if(tabDrag) e.preventDefault(); });
+}
+function liftTab(d){
+  if(tabDrag !== d) return;
+  if(!editMode || !tabElOf(d.id)){ cancelTabDrag(); return; }
+  d.lifted = true;
+  closeCtx();
+  document.body.classList.add('tab-moving');
+  tabElOf(d.id).classList.add('lift');               // 다시 그려지면 renderTabs 가 붙인다
+  updateTabDrop(d.sx, d.sy);
+}
+function onTabDragMove(e){
+  const d = tabDrag; if(!d) return;
+  if(!d.lifted){
+    if(Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 10) endTabDrag();   // 들기 전에 움직이면 평소 손길
+    return;
+  }
+  /* 버튼이 이미 떼어졌는데 pointerup 을 놓쳤다(창 밖에서 뗌 등) — 다음 클릭에 엉뚱하게 옮겨지지 않게 내려놓는다 */
+  if(e.pointerType === 'mouse' && e.buttons === 0){ cancelTabDrag(); return; }
+  updateTabDrop(e.clientX, e.clientY);
+}
+function updateTabDrop(x, y){
+  const d = tabDrag, mk = document.getElementById('tabDrop');
+  const b = d && tabDropAt(x, y, d.id);
+  if(!b){ if(d) d.to = -1; if(mk) mk.hidden = true; return; }
+  d.to = b.k;
+  if(!mk) return;
+  mk.hidden = false;
+  mk.style.left = Math.round(b.x - 1.5) + 'px';
+  mk.style.top = Math.round(b.top) + 'px';
+  mk.style.height = Math.round(b.h) + 'px';
+}
+/* 놓는 자리는 마지막 pointermove 가 정한 d.to 를 쓴다 — 좌표 없는 합성 pointerup 이 와도 0 번 자리로 튀지 않게 */
+function onTabDragUp(){
+  const d = tabDrag; if(!d) return;
+  endTabDrag();
+  if(!d.lifted) return;                              // 짧게 누름 — 평소 click 이 그대로 간다
+  tabClickEatUntil = performance.now() + TAB_EAT_MS;
+  if(d.to >= 0) moveTab(d.id, d.to);
+}
+function endTabDrag(){
+  const d = tabDrag; if(!d) return;
+  clearTimeout(d.timer);
+  tabDrag = null;
+  window.removeEventListener('pointermove', onTabDragMove);
+  window.removeEventListener('pointerup', onTabDragUp);
+  window.removeEventListener('pointercancel', cancelTabDrag);
+  document.body.classList.remove('tab-moving');
+  const mk = document.getElementById('tabDrop'); if(mk) mk.hidden = true;
+  tabsEl.querySelectorAll('.tab.lift').forEach(el => el.classList.remove('lift'));
+}
+/* 옮기지 않고 내려놓는다(ESC·pointercancel). 들고 있었으면 true */
+function cancelTabDrag(){
+  const lifted = !!tabDrag?.lifted;
+  endTabDrag();
+  if(lifted) tabClickEatUntil = performance.now() + TAB_EAT_MS;
+  return lifted;
 }
 
 /* ---------------- §5-1b 탭 주소 ----------------
@@ -6294,6 +6510,7 @@ function bindStaticUI(){
     e.target.value = '';
   });
   $('#projBtn').onclick = openProjectMenu;
+  bindTabDrag();
   $('#chatSend').onclick = sendChat;
   /* 카드가 매번 새로 그려지므로 위임으로 받는다 */
   chatLogEl.addEventListener('click', e => {
@@ -6330,6 +6547,7 @@ function bindStaticUI(){
   $('#zIn').onclick = () => { const r = wrapEl.getBoundingClientRect(); zoomAt(r.width/2, r.height/2, 1.25); };
   $('#zOut').onclick = () => { const r = wrapEl.getBoundingClientRect(); zoomAt(r.width/2, r.height/2, 1/1.25); };
   $('#zFit').onclick = zoomFit;
+  $('#zHelp').onclick = openHelp;
 
   /* ⚠ 노드·엣지의 pointerdown 이 stopPropagation 하므로 버블 단계로는 못 잡는다 —
      Alt 를 누른 채 노드를 드래그하면 관계 추가 모드로 새는 것을 캡처 단계에서 막는다 */
@@ -6392,7 +6610,12 @@ function bindStaticUI(){
     if((e.ctrlKey || e.metaKey) && !typing() && !topModal() && (e.key === 'y' || e.key === 'Y')){
       e.preventDefault(); doRedo(); return;
     }
+    /* ? — 단축키 도움말. 한글 자판에서도 Shift+/ 는 '?' 로 온다 */
+    if(e.key === '?' && !typing() && !shortcutBusy() && !e.ctrlKey && !e.metaKey && !e.altKey){
+      e.preventDefault(); openHelp(); return;
+    }
     if(e.key !== 'Escape') return;
+    if(tabDrag){ cancelTabDrag(); return; }       // 들고 있던 탭을 제자리에 내려놓는다
     if(!ctxEl.hidden){ closeCtx(); return; }
     if(!$('#searchBar').hidden){ closeSearch(); return; }
     if(linkMode.active){ exitLink(); return; }   // §9 ESC → 관계 추가 취소

@@ -369,6 +369,17 @@ function makeFirebaseStub(initialDb, writeLog){
     T('L7 원격 반영이 되받아 쓰기를 부르지 않는다', tlWrites() === afterRemote, {afterRemote, now: tlWrites()});
     EL("curTab().nodes[0].name = '고침5'; commit();"); await wait(60);
     T('L8 원격 반영 뒤 편집에도 조용하다', tlWrites() === afterRemote, {afterRemote, now: tlWrites()});
+
+    /* 탭 순서 바꾸기 — 같은 프로젝트로 모은 뒤 두 탭을 맞바꾼다 */
+    EL("tabs.forEach(t => { t.project = '신규'; }); commit();"); await wait(80);
+    const beforeMove = tlWrites();
+    const order = EL("tabs.map(t => t.id).join(',')");
+    T('L9 순서를 바꾸면 tabList 가 한 번 나간다', EL("moveTab(tabs[1].id, 0)") === true && (await wait(80), tlWrites() === beforeMove + 1),
+      {beforeMove, now: tlWrites()});
+    T('L10 서버 목록도 새 순서', (st.getPath('worldmind/tabList') || []).map(x => x.id).join(',') === order.split(',').reverse().join(','),
+      st.getPath('worldmind/tabList'));
+    EL("curTab().nodes[0].name = '고침6'; commit();"); await wait(60);
+    T('L11 순서를 바꾼 뒤 내용 편집에도 다시 안 나간다', tlWrites() === beforeMove + 1, {beforeMove, now: tlWrites()});
   }
 
   T('전 과정 예외 없음', errs.length === 0, errs);

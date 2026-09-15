@@ -20,7 +20,7 @@ README.md              배포 안내 (관리자용)
 
 ```bash
 npm install        # jsdom 하나뿐
-npm test           # 7개 파일 · 725개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
+npm test           # 7개 파일 · 772개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
 npm run check      # index.html 안의 스크립트 문법 검사
 ```
 
@@ -47,7 +47,8 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `캔버스 뷰포트` / `렌더 파이프라인` | 팬·줌, `renderAll = renderNodes + renderEdges` (각 1회 원칙) |
 | `연결선 지오메트리` | `buildObstacles`, `edgePath`(2차 베지어), `chooseCurve`(노드 회피 굴곡 선택), `setEdgeGeom` |
 | `§5-2 노드 상호작용` | 클릭 펼침, 다중 선택(`sel.nodeIds`, Ctrl/Shift+클릭·Ctrl+드래그 마퀴 — 기존 선택에 합집합 누적, 수식키 없는 빈 캔버스 드래그는 팬), 그룹 드래그, Shift 정렬 스냅(`computeSnap`+가이드선), 3px 드래그, 0.5s 롱프레스, `_justDragged`, `cleanupFns` |
-| `§5-2 캔버스 단축키` | Tab(`pointerWorld`로 커서 위치 노드 추가) · Delete(`askDeleteSelection`) · Alt 단독 탭(`altSolo`→`startLink`). `shortcutBusy()`가 모달·배너·컨텍스트 메뉴 중 차단 |
+| `§5-2 캔버스 단축키` | Tab(`pointerWorld`로 커서 위치 노드 추가) · Delete(`askDeleteSelection`) · Alt 단독 탭(`altSolo`→`startLink`) · `?`(`openHelp`). `shortcutBusy()`가 모달·배너·컨텍스트 메뉴 중 차단 |
+| `단축키 도움말` | `HELP_KEYS`(묶음 → `[키 목록, 설명, 편집 전용이면 1]`)/`HELP_PLAIN`(키캡이 아니라 글로 보일 마우스 동작)/`openHelp`. 캔버스 오른쪽 아래 `#zHelp`(확대·축소 줄 맨 아래) 또는 `?` 키. 키 사이 `'/'` 는 "또는". 맥은 `Ctrl` 을 `⌘` 로 바꿔 보여준다(코드가 `ctrlKey \|\| metaKey` 로 받으므로). 보기 전용이면 편집 전용 줄을 흐리게 |
 | `§5-14 노드 타입 관리` | `openTypeManager`(탭별 타입 추가·이름변경·순서·삭제). 삭제된 타입의 노드는 최하위 타입으로 이동 |
 | `§5-16 노드 가져오기` | `openImportModal`/`runImport`/`applyImportResult`. `parseDrawio`(mxCell 파싱+압축 해제), `layoutImported`+`freeOrigin`(추가분만 배치 — 기존 좌표 불변) |
 | `§1 노드 스키마` | `nodeTypes(n)`(겸하는 타입 목록) · `nodeTypeLabels` · `typeFields`(타입별 기본 속성) · `propGet`. ⚠ `node.type` 은 `sanitizeTab` 이 항상 `types[0]` 과 동기화하므로 둘을 따로 쓰면 안 된다 |
@@ -62,6 +63,7 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§5-6 세계관 대화` | `renderChat`/`sendChat`/`chatSystem`/`splitProposals`/`proposalState`/`applyProposal`. 답변 끝의 ```json 블록에서 제안을 꺼내 카드로 보여주고, **＋ 적용을 눌러야** 세계관에 들어간다(5종: node·edge·event·nodeEdit·world). 기록은 `tab._chat`(런타임 전용) — **저장·동기화되지 않아 새로고침·되돌리기(`applyTabSnapshot` 이 탭 객체를 갈아끼운다)에 사라진다.** 매 턴 `worldSystem(tab)` 을 새로 만들어 시스템 프롬프트로 넣고 `_chat` 전체를 함께 보낸다(길이 상한 없음). 실패하면 마지막 사용자 메시지를 되돌려 입력칸에 되살린다 |
 | `§5-9 AI 노드 생성` / `§5-10 AI 추천` / `§5-8 주인공 방문` | AI 기능. 프롬프트는 `buildCtx/worldSystem` 재사용 |
 | 프로젝트 (`normProject`) | `tabListEntry`/`curProject`/`projectNames`/`tabsIn`/`switchProject`/`newProject`/`renameProject`/`openProjectMenu`. 탭마다 `project` 이름 하나 — 프로젝트 목록을 따로 두지 않고 탭들이 가진 이름의 집합으로 본다(빈 프로젝트는 없다, 새 프로젝트는 첫 탭과 함께 생긴다). 프로젝트가 없던 탭은 `DEFAULT_PROJECT`('기존 프로젝트'). 탭 줄은 지금 프로젝트의 탭만 그린다. 서버에서는 **`tabList` 항목에만** 실리고 `tabs/{id}` 는 건드리지 않는다 |
+| `§5-1c 탭 순서 바꾸기` | `moveTab(id, to)`/`bindTabDrag`/`tabDropAt`/`liftTab`/`cancelTabDrag`. 편집 모드에서 탭을 `TAB_HOLD_MS`(500ms) 누르면 들리고(`.lift`, `body.tab-moving`), 끄는 동안 `#tabDrop` 표시선이 놓을 자리를 보여준다. 들기 전에 10px 넘게 움직이면 평소 손길로 돌려준다. ESC·`pointercancel` 은 옮기지 않고 내려놓는다 |
 | `§5-1b 탭 주소` | `hashTarget`/`syncTabLocation`(`renderTabs` 가 매번 호출). 주소는 `#프로젝트/순번`(프로젝트 안 순번). 옛 주소 `#2`(전체 순번)·`#탭id`·`#탭이름` 도 계속 읽는다. 프로젝트 이름 속 `/` 는 `%2F` 로 인코딩되므로 **디코딩 전에 마지막 `/` 에서 자른다**. GitHub Pages 는 정적이라 `/loremap/2` 경로는 404 가 되므로 `#` 뒤에 붙인다. 읽을 때는 순번·탭 id·탭 이름 셋 다 받고, 쓸 때는 순번을 쓴다. 첫 탭 결정 순서 = 주소 > `wm_lasttab` > 첫 탭 |
 | `§5-1 탭 관리` / `§5-11 편집 모드` / `테마` / `§5-13 설정` / `정적 UI 바인딩` / `main()` | 앱 셸 |
 
@@ -79,6 +81,9 @@ npm run check      # index.html 안의 스크립트 문법 검사
 - **탭 목록 한 줄의 모양은 `tabListEntry()` 하나로만 만든다.** 초기 로드의 `lastTabListJson`(=`normTabList` 결과)과 편집 때 보내는 `tl` 이 한 글자라도 다르면, 내용만 고쳐도 `commit()` 마다 `tabList` 를 다시 쓴다(metaKey 와 같은 사고). 예전엔 `tabs.map(t => ({id, title}))` 가 네 군데(sweepOrphanTabs·fbSyncActive·삭제·마이그레이션)에 흩어져 있었다. `tests/fb.test.js` 의 L 블록이 이 재전송을 쓰기 횟수로 센다.
 - **프로젝트 이름 바꾸기는 되돌리기 대상이 아니다.** 여러 탭에 한꺼번에 걸쳐서, 탭별 되돌리기로는 지금 탭만 물려 프로젝트가 둘로 쪼개진다. 대신 바꾼 탭들의 `lastMap` 기준점을 새 상태로 맞춰 헛 되돌리기 항목이 쌓이지 않게 한다. **탭 하나를 옮기는 것**(이름 변경 창의 프로젝트 칸)은 활성 탭 하나라 되돌리기 한 단계다.
 - 프로젝트는 `tabList` 에만 있으므로, **캐시된 옛 `index.html` 을 연 다른 기기가 탭을 추가·삭제·개명하면 `{id,title}` 만 다시 써서 프로젝트 묶음이 지워진다**(내용은 안 지워진다). 배포 뒤 다른 기기는 새로고침할 것.
+- **탭 순서 바꾸기는 지금 프로젝트가 `tabs` 에서 차지한 자리들 안에서만 돈다.** 탭 줄에는 한 프로젝트의 탭만 보이지만 `tabs` 는 모든 프로젝트가 섞인 한 배열이다. 전체 배열에서 `splice` 하면 안 보이는 다른 프로젝트 탭 사이로 끼어들어, 주소 순번(`#프로젝트/2`)과 다른 기기의 탭 순서가 엉뚱하게 바뀐다. `moveTab` 은 자리 번호를 모아두고 그 자리에만 새 순서를 채운다. 순서는 `tabIdsKey` 에 들어가므로 `commit()` 한 번이 **구조 되돌리기 한 단계**이고 `tabList` 를 한 번 쓴다(`tests/fb.test.js` L9~L11).
+- **탭을 끌어 놓은 손이 떼는 `click`·`dblclick` 은 `tabClickEatUntil`(400ms) 로 삼킨다.** 안 그러면 제자리에서 길게 눌렀다 떼기만 해도 그 탭으로 바뀐다. 놓을 자리는 `pointerup` 좌표가 아니라 **마지막 `pointermove` 가 정한 `tabDrag.to`** 를 쓴다 — 노드 롱프레스가 좌표 없는 합성 `pointerup` 을 창에 흘리므로 좌표를 믿으면 0번 자리로 튄다. 편집 모드의 `.tab` 에는 `touch-action:none` 이 있어야 터치로 끌 때 `pointercancel` 이 안 온다.
+- **단축키를 더하거나 바꾸면 `HELP_KEYS` 도 함께 고칠 것.** 도움말은 코드에서 뽑아내는 게 아니라 손으로 쓴 표다. `features.test.js` 36-33 이 키보드 단축키가 표에 빠짐없이 있는지만 본다.
 - 탭이 사라지는 경로(`askDeleteTab`, `applyRemoteTabList`)에서는 `dropTabUndo(id)`로 그 탭의 히스토리를 함께 버릴 것. 안 그러면 죽은 키가 세션 내내 남는다.
 - **목차의 더블클릭은 직접 센다**(`TOC_DBL_MS`). `#tocBody`를 다시 그리면 두 번째 클릭이 사라진 요소에 떨어져, 브라우저가 `dblclick`을 공통 조상(`#tocBody`)에 쏘고 `closest('.toc-i')`가 null 이 된다. 그래서 ① `.cur`(현재 노드 강조)는 **생성 HTML 에 넣지 않고** `markTocCurrent()`가 제자리에서만 붙이고, ② `renderTocPanel`은 `tocSig`(직전 HTML)와 같으면 `innerHTML`을 건드리지 않는다. 이 둘 덕에 `renderAll()`이 목차를 매번 불러도 요소가 살아남는다. 합성 `dblclick`을 쏘는 테스트는 이 회귀를 잡지 못한다 — 클릭 **두 번**으로 검증할 것.
 - 목차는 `renderAll()`이 끌고 간다(`rpCur === 'list'`일 때). `commit()`은 패널을 갱신하지 않으므로, 여기서 빼면 이름 변경·삭제 뒤 목차에 유령 항목이 남는다.
