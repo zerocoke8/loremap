@@ -313,6 +313,64 @@ function makeFirebaseStub(initialDb, writeLog){
     T('K3 서버 tabList 는 건드리지 않음', (st.getPath('worldmind/tabList')||[]).map(x=>x.id).sort().join(',') === 'tA,tNEW');
   }
 
+  /* --- L. 프로젝트: 탭 목록에 project 가 붙어도 재전송이 돌지 않는다 ---
+     초기 로드의 lastTabListJson 과 편집 때 보내는 tl 이 모양이 한 글자라도 다르면
+     내용만 고쳐도 commit 마다 tabList 를 다시 쓴다(metaKey 때와 같은 사고). */
+  {
+    const log = [];
+    const st = makeFirebaseStub({
+      'worldmind': {
+        /* 프로젝트가 생기기 전의 서버 — tabList 항목에 project 가 없다 */
+        tabList:[{id:'tP1', title:'옛 탭'}, {id:'tP2', title:'새 탭'}],
+        tabs:{
+          tP1: {...liveTab, meta:{title:'옛 탭', worldPrompt:'', _w:'sOTHER'}},
+          tP2: {...liveTab, meta:{title:'새 탭', worldPrompt:'', _w:'sOTHER'}}
+        }
+      },
+      '.info': {connected: true}
+    }, log);
+    const d = new JSDOM(html, {runScripts:'dangerously', url:'https://localhost/', beforeParse(w){
+      w.localStorage.setItem('wm_fbcfg', '{"apiKey":"x","databaseURL":"https://t.firebasedatabase.app"}');
+      w.sessionStorage.setItem('wm_tok', 'TOK');
+      w.sessionStorage.setItem('wm_tok_exp', String(Date.now() + 3600e3));
+      w.firebase = st.firebase;
+      w.requestAnimationFrame = cb => setTimeout(() => cb(w.performance.now()), 16);
+      w.PointerEvent = w.MouseEvent;
+    }});
+    const EL = c => d.window.eval(c);
+    await wait(400);
+    const tlWrites = () => log.filter(w => w.path === 'worldmind/tabList' ||
+      (w.path === 'UPDATE' && (w.keys || []).includes('worldmind/tabList'))).length;
+
+    T('L1 옛 서버 탭은 기존 프로젝트로 읽힌다', EL("tabs.length === 2 && tabs.every(t => t.project === '기존 프로젝트')"),
+      EL("JSON.stringify(tabs.map(t => [t.id, t.project]))"));
+    const base = tlWrites();
+    EL("curTab().nodes[0].name = '고침1'; commit();"); await wait(60);
+    EL("curTab().nodes[0].name = '고침2'; commit();"); await wait(60);
+    EL("curTab().nodes[0].name = '고침3'; commit();"); await wait(60);
+    T('L2 내용만 고치면 tabList 를 다시 보내지 않는다 (무한 재전송 없음)', tlWrites() === base,
+      {base, now: tlWrites(), log: log.map(w => w.path)});
+
+    EL("curTab().project = '신규'; commit();"); await wait(80);
+    T('L3 탭을 다른 프로젝트로 옮기면 tabList 가 한 번 나간다', tlWrites() === base + 1, {base, now: tlWrites()});
+    T('L4 서버 tabList 에 project 가 실린다',
+      (st.getPath('worldmind/tabList') || []).some(x => x.id === EL('activeTabId') && x.project === '신규'),
+      st.getPath('worldmind/tabList'));
+    EL("curTab().nodes[0].name = '고침4'; commit();"); await wait(60);
+    T('L5 그 뒤 내용 편집에도 다시 안 나간다', tlWrites() === base + 1, {base, now: tlWrites()});
+
+    /* 다른 기기가 프로젝트를 바꾼다 — 이 setPath 한 번은 흉내일 뿐이니 따로 센다 */
+    const other = EL("tabs.find(t => t.id !== activeTabId).id");
+    const list = (st.getPath('worldmind/tabList') || []).map(x => x.id === other ? {...x, project:'외전'} : x);
+    st.setPath('worldmind/tabList', list);
+    const afterRemote = tlWrites();
+    await wait(150);
+    T('L6 원격에서 바꾼 프로젝트가 반영된다', EL("tabs.find(t => t.id === '" + other + "').project") === '외전');
+    T('L7 원격 반영이 되받아 쓰기를 부르지 않는다', tlWrites() === afterRemote, {afterRemote, now: tlWrites()});
+    EL("curTab().nodes[0].name = '고침5'; commit();"); await wait(60);
+    T('L8 원격 반영 뒤 편집에도 조용하다', tlWrites() === afterRemote, {afterRemote, now: tlWrites()});
+  }
+
   T('전 과정 예외 없음', errs.length === 0, errs);
   console.log('\n결과: ' + pass + ' 통과 / ' + fail + ' 실패');
   process.exit(fail ? 1 : 0);

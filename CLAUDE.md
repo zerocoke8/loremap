@@ -20,17 +20,17 @@ README.md              배포 안내 (관리자용)
 
 ```bash
 npm install        # jsdom 하나뿐
-npm test           # 7개 파일 · 679개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
+npm test           # 7개 파일 · 725개 검증, 전부 통과가 기준선. 작업 전후 반드시 실행
 npm run check      # index.html 안의 스크립트 문법 검사
 ```
 
 ## 절대 바꾸면 안 되는 것 (기존 사용자 데이터 호환)
 
-- **데이터 스키마**: Tab{id,title,nodes,edges,events,worldPrompt,nodeTypes,refImages}, Node{id,type,name,desc,x,y}, Edge{id,from,to,label,desc,isParent}, Event{id,time,body,order,who[]}. `gid()`='i'+카운터. 런타임 전용 필드는 `_exp`, `_aiPreview`, `_chat`이며 절대 저장하지 않는다(`cleanTab` 화이트리스트).
+- **데이터 스키마**: Tab{id,title,project,nodes,edges,events,worldPrompt,nodeTypes,refImages}, Node{id,type,name,desc,x,y}, Edge{id,from,to,label,desc,isParent}, Event{id,time,body,order,who[]}. `gid()`='i'+카운터. 런타임 전용 필드는 `_exp`, `_aiPreview`, `_chat`이며 절대 저장하지 않는다(`cleanTab` 화이트리스트).
 - **타입 목록 정규화는 `normTypes()` 하나만 쓴다** — `sanitizeTab`·`cleanTab`·`metaFB`·meta 수신·`adoptServerTab` 다섯 자리가 같은 함수를 지나야 한다. 예전에 네 곳이 `{key,label}` 만 넘겨 `fields`(타입 기본 속성)가 새로고침을 못 넘겼다. 모양이 한 곳만 달라도 `metaKey` 가 어긋나 meta 를 무한 재전송한다.
 - **노드 타입은 탭 데이터**다(`Tab.nodeTypes = [{key,label,fields[]}]` — `fields` 는 그 타입 노드에 기본으로 깔아줄 속성 이름들, 배열 순서 = 상하위 단계, 색은 순서대로 자동 배정, 이모지 없음). 옛 상수 `TL/TI/TC/TYPES`는 없어졌고 `DEFAULT_TYPES`/`typeList/typeLabel/typeColors/typeKeyOr`가 대신한다. **`key`는 `node.type`에 저장되는 값이라 절대 바꾸지 않는다**(label만 변경). 기본 7종의 key(world…custom)는 기존 사용자 데이터 호환을 위해 유지한다.
-- **localStorage 키**: `wm_snapday`(자동 저장본을 남긴 마지막 날짜). `wm_tabs` = `JSON.stringify({tabs})` 형식 고정. `wm_fbcfg`(수동 Firebase 설정), `wm_theme`, `wm_edgecolor`, `wm_edgeshape`, `wm_toc`(접어둔 목차 타입 key 배열), `wm_npsize`(설명·메모 칸 높이 `{desc,memo}`), `wm_lasttab`(마지막으로 보던 탭 id). 옛 키 `wm_k/wm_gk/wm_mh`는 더 이상 쓰지 않지만 지우지도 않는다. **화면 취향(테마·목차·칸 높이)만 넣는다 — 세계관 데이터는 `wm_tabs` 하나뿐이다.**
-- **Firebase 경로**: `worldmind/tabList[{id,title}]`, `worldmind/tabs/{tabId}/{meta{title,worldPrompt,_w}, nodes/{id}, edges/{id}, events/{id}}`. 모든 항목에 `_w`=세션 ID(`FB_SID`). 구 포맷 `worldmind/{tabs:[…]}`는 `migrateIfOld`가 자동 이전한다.
+- **localStorage 키**: `wm_projtab`(프로젝트마다 마지막으로 보던 탭 `{프로젝트: 탭id}`), `wm_snapday`(자동 저장본을 남긴 마지막 날짜). `wm_tabs` = `JSON.stringify({tabs})` 형식 고정. `wm_fbcfg`(수동 Firebase 설정), `wm_theme`, `wm_edgecolor`, `wm_edgeshape`, `wm_toc`(접어둔 목차 타입 key 배열), `wm_npsize`(설명·메모 칸 높이 `{desc,memo}`), `wm_lasttab`(마지막으로 보던 탭 id). 옛 키 `wm_k/wm_gk/wm_mh`는 더 이상 쓰지 않지만 지우지도 않는다. **화면 취향(테마·목차·칸 높이)만 넣는다 — 세계관 데이터는 `wm_tabs` 하나뿐이다.**
+- **Firebase 경로**: `worldmind/tabList[{id,title,project}]`, `worldmind/tabs/{tabId}/{meta{title,worldPrompt,_w}, nodes/{id}, edges/{id}, events/{id}}`. 모든 항목에 `_w`=세션 ID(`FB_SID`). 구 포맷 `worldmind/{tabs:[…]}`는 `migrateIfOld`가 자동 이전한다.
 - `sanitizeTab`은 모든 로드 경로가 통과해야 한다.
 
 ## index.html 안의 지도 (주석 헤더로 검색)
@@ -61,7 +61,8 @@ npm run check      # index.html 안의 스크립트 문법 검사
 | `§6 AI 호출 헬퍼` | `callClaude(system, messages, maxTokens, opts)` / `callGemini` → 모두 `apiPost`로 Worker 경유. `opts.effort`로 사고 깊이를, `opts.label`로 계측 이름을 준다. 호출마다 `noteUsage`가 `aiUsage`(세션 누적 입력·출력·캐시·잘림 횟수)에 적재하고 콘솔에 남긴다 |
 | `§5-6 세계관 대화` | `renderChat`/`sendChat`/`chatSystem`/`splitProposals`/`proposalState`/`applyProposal`. 답변 끝의 ```json 블록에서 제안을 꺼내 카드로 보여주고, **＋ 적용을 눌러야** 세계관에 들어간다(5종: node·edge·event·nodeEdit·world). 기록은 `tab._chat`(런타임 전용) — **저장·동기화되지 않아 새로고침·되돌리기(`applyTabSnapshot` 이 탭 객체를 갈아끼운다)에 사라진다.** 매 턴 `worldSystem(tab)` 을 새로 만들어 시스템 프롬프트로 넣고 `_chat` 전체를 함께 보낸다(길이 상한 없음). 실패하면 마지막 사용자 메시지를 되돌려 입력칸에 되살린다 |
 | `§5-9 AI 노드 생성` / `§5-10 AI 추천` / `§5-8 주인공 방문` | AI 기능. 프롬프트는 `buildCtx/worldSystem` 재사용 |
-| `§5-1b 탭 주소` | `hashTarget`/`syncTabLocation`(`renderTabs` 가 매번 호출). 주소 `#2` = 두 번째 탭. GitHub Pages 는 정적이라 `/loremap/2` 경로는 404 가 되므로 `#` 뒤에 붙인다. 읽을 때는 순번·탭 id·탭 이름 셋 다 받고, 쓸 때는 순번을 쓴다. 첫 탭 결정 순서 = 주소 > `wm_lasttab` > 첫 탭 |
+| 프로젝트 (`normProject`) | `tabListEntry`/`curProject`/`projectNames`/`tabsIn`/`switchProject`/`newProject`/`renameProject`/`openProjectMenu`. 탭마다 `project` 이름 하나 — 프로젝트 목록을 따로 두지 않고 탭들이 가진 이름의 집합으로 본다(빈 프로젝트는 없다, 새 프로젝트는 첫 탭과 함께 생긴다). 프로젝트가 없던 탭은 `DEFAULT_PROJECT`('기존 프로젝트'). 탭 줄은 지금 프로젝트의 탭만 그린다. 서버에서는 **`tabList` 항목에만** 실리고 `tabs/{id}` 는 건드리지 않는다 |
+| `§5-1b 탭 주소` | `hashTarget`/`syncTabLocation`(`renderTabs` 가 매번 호출). 주소는 `#프로젝트/순번`(프로젝트 안 순번). 옛 주소 `#2`(전체 순번)·`#탭id`·`#탭이름` 도 계속 읽는다. 프로젝트 이름 속 `/` 는 `%2F` 로 인코딩되므로 **디코딩 전에 마지막 `/` 에서 자른다**. GitHub Pages 는 정적이라 `/loremap/2` 경로는 404 가 되므로 `#` 뒤에 붙인다. 읽을 때는 순번·탭 id·탭 이름 셋 다 받고, 쓸 때는 순번을 쓴다. 첫 탭 결정 순서 = 주소 > `wm_lasttab` > 첫 탭 |
 | `§5-1 탭 관리` / `§5-11 편집 모드` / `테마` / `§5-13 설정` / `정적 UI 바인딩` / `main()` | 앱 셸 |
 
 ## 동작 원리 요약
@@ -75,6 +76,9 @@ npm run check      # index.html 안의 스크립트 문법 검사
 
 - 되돌리기는 `commit()`마다 `recordUndo()`가 적재한다(새 데이터 변형 기능은 마지막에 `commit()`만 부르면 된다). **스택이 둘로 나뉘어 있다** — 탭 내용은 탭별 `undoMap/redoMap`(활성 탭만 되돌린다), 탭 집합 변화(추가·복제·삭제·가져오기)는 전역 `undoStack/redoStack`. 두 스택 항목에 붙은 전역 순번 `seq`를 비교해 **시간 역순**으로 소비한다.
 - 되돌리기 적용은 `applyTabSnapshot`(활성 탭 하나만 교체 — 탭이 바뀌지 않는다)과 `applyStruct`(탭 집합만 맞추고 살아남은 탭 객체는 그대로 재사용)로 갈라진다. `applyStruct`는 현재 탭이 살아 있으면 그 탭에 머물고, 탭이 되살아나거나 사라진 복원이라 `pushAllToFB()` 후 `attachTab(id,false)`로 서버를 맞춘다. 가져오기처럼 tabs 전체가 교체되는 변경만 `recordFullUndo()`로 내용까지 되돌린다.
+- **탭 목록 한 줄의 모양은 `tabListEntry()` 하나로만 만든다.** 초기 로드의 `lastTabListJson`(=`normTabList` 결과)과 편집 때 보내는 `tl` 이 한 글자라도 다르면, 내용만 고쳐도 `commit()` 마다 `tabList` 를 다시 쓴다(metaKey 와 같은 사고). 예전엔 `tabs.map(t => ({id, title}))` 가 네 군데(sweepOrphanTabs·fbSyncActive·삭제·마이그레이션)에 흩어져 있었다. `tests/fb.test.js` 의 L 블록이 이 재전송을 쓰기 횟수로 센다.
+- **프로젝트 이름 바꾸기는 되돌리기 대상이 아니다.** 여러 탭에 한꺼번에 걸쳐서, 탭별 되돌리기로는 지금 탭만 물려 프로젝트가 둘로 쪼개진다. 대신 바꾼 탭들의 `lastMap` 기준점을 새 상태로 맞춰 헛 되돌리기 항목이 쌓이지 않게 한다. **탭 하나를 옮기는 것**(이름 변경 창의 프로젝트 칸)은 활성 탭 하나라 되돌리기 한 단계다.
+- 프로젝트는 `tabList` 에만 있으므로, **캐시된 옛 `index.html` 을 연 다른 기기가 탭을 추가·삭제·개명하면 `{id,title}` 만 다시 써서 프로젝트 묶음이 지워진다**(내용은 안 지워진다). 배포 뒤 다른 기기는 새로고침할 것.
 - 탭이 사라지는 경로(`askDeleteTab`, `applyRemoteTabList`)에서는 `dropTabUndo(id)`로 그 탭의 히스토리를 함께 버릴 것. 안 그러면 죽은 키가 세션 내내 남는다.
 - **목차의 더블클릭은 직접 센다**(`TOC_DBL_MS`). `#tocBody`를 다시 그리면 두 번째 클릭이 사라진 요소에 떨어져, 브라우저가 `dblclick`을 공통 조상(`#tocBody`)에 쏘고 `closest('.toc-i')`가 null 이 된다. 그래서 ① `.cur`(현재 노드 강조)는 **생성 HTML 에 넣지 않고** `markTocCurrent()`가 제자리에서만 붙이고, ② `renderTocPanel`은 `tocSig`(직전 HTML)와 같으면 `innerHTML`을 건드리지 않는다. 이 둘 덕에 `renderAll()`이 목차를 매번 불러도 요소가 살아남는다. 합성 `dblclick`을 쏘는 테스트는 이 회귀를 잡지 못한다 — 클릭 **두 번**으로 검증할 것.
 - 목차는 `renderAll()`이 끌고 간다(`rpCur === 'list'`일 때). `commit()`은 패널을 갱신하지 않으므로, 여기서 빼면 이름 변경·삭제 뒤 목차에 유령 항목이 남는다.

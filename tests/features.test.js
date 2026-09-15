@@ -1433,9 +1433,9 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     /* 탭 주소 — 순번을 쓴다 */
     E("addTab(); addTab();"); await wait(50);
     T("24-5 탭이 셋", E("tabs.length") === 3);
-    T("24-6 주소가 지금 탭의 순번", w.location.hash === "#3", w.location.hash);
+    T("24-6 주소가 지금 프로젝트 안의 순번", decodeURIComponent(w.location.hash) === "#기존 프로젝트/3", decodeURIComponent(w.location.hash));
     E("switchTab(tabs[0].id)"); await wait(40);
-    T("24-7 탭을 옮기면 주소도 따라온다", w.location.hash === "#1", w.location.hash);
+    T("24-7 탭을 옮기면 주소도 따라온다", decodeURIComponent(w.location.hash) === "#기존 프로젝트/1", decodeURIComponent(w.location.hash));
     T("24-8 마지막으로 본 탭을 기억한다",
       E("localStorage.getItem('wm_lasttab')") === E("tabs[0].id"));
 
@@ -1466,7 +1466,8 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
     }});
     await wait(400);
     T("25-1 마지막으로 보던 탭이 열린다", back.E("activeTabId") === "t3");
-    T("25-2 주소도 그 탭을 가리킨다", back.win.location.hash === "#3", back.win.location.hash);
+    T("25-2 주소도 그 탭을 가리킨다", decodeURIComponent(back.win.location.hash) === "#기존 프로젝트/3",
+      decodeURIComponent(back.win.location.hash));
     back.win.close();
 
     /* 주소가 있으면 주소가 이긴다 */
@@ -2360,6 +2361,161 @@ const J = (o, s) => new Response(JSON.stringify(o), {status:s, headers:{'content
       !doc.getElementById("stSnaps").classList.contains("eo"));
     E("[...modalsEl.querySelectorAll('.ov')].forEach(closeModal);");
     await wait(30);
+  }
+
+  /* ---- 35. 프로젝트 — 탭들의 상위 묶음 ---- */
+  {
+    E("clearSel(); closePanel(); exitEventPick(); [...modalsEl.querySelectorAll('.ov')].forEach(closeModal);");
+    /* 세 프로젝트에 걸친 탭 다섯 개 */
+    E("tabs = [" +
+      "sanitizeTab({id:'p1', title:'옛 대륙',  nodes:[], edges:[], events:[], worldPrompt:''})," +
+      "sanitizeTab({id:'p2', title:'옛 제국',  nodes:[], edges:[], events:[], worldPrompt:''})," +
+      "sanitizeTab({id:'p3', title:'새 세계',  project:'신규', nodes:[], edges:[], events:[], worldPrompt:''})," +
+      "sanitizeTab({id:'p4', title:'새 도시',  project:'신규', nodes:[], edges:[], events:[], worldPrompt:''})," +
+      "sanitizeTab({id:'p5', title:'외전',     project:'외전 프로젝트', nodes:[], edges:[], events:[], worldPrompt:''})" +
+      "]; activeTabId = 'p1'; setEditMode(true); seedUndo(); renderTabs(); renderAll();");
+    await wait(40);
+
+    /* --- 모양 --- */
+    T("35-1 프로젝트 없는 옛 탭은 기존 프로젝트로", E("tabs[0].project") === "기존 프로젝트");
+    T("35-2 프로젝트 목록은 처음 나타난 순서", E("projectNames().join(',')") === "기존 프로젝트,신규,외전 프로젝트");
+    T("35-3 이름은 앞뒤 공백을 떼고 30자로", E("normProject('  ' + '가'.repeat(40) + '  ')") === "가".repeat(30));
+    T("35-4 빈 이름은 기존 프로젝트로", E("normProject('   ')") === "기존 프로젝트" && E("normProject(null)") === "기존 프로젝트");
+
+    /* --- 탭 줄은 지금 프로젝트의 탭만 --- */
+    const tabTitles = () => [...doc.querySelectorAll("#tabs .tab .tt")].map(e => e.textContent).join(",");
+    T("35-5 탭 줄에 지금 프로젝트의 탭만", tabTitles() === "옛 대륙,옛 제국", tabTitles());
+    T("35-6 선택기에 지금 프로젝트 이름", doc.getElementById("projName").textContent === "기존 프로젝트");
+
+    /* --- 저장·동기화 모양이 한 가지 --- */
+    T("35-7 저장 형식에 프로젝트", JSON.parse(E("JSON.stringify(cleanTab(tabs[2]))")).project === "신규");
+    T("35-8 서버 목록 한 줄에 프로젝트", E("JSON.stringify(tabListEntry(tabs[2]))") ===
+      JSON.stringify({id:"p3", title:"새 세계", project:"신규"}));
+    T("35-9 서버에서 읽은 목록과 보내는 목록이 같은 모양 — 무한 재전송이 없다", (() => {
+      const sent = E("JSON.stringify(tabs.map(tabListEntry))");
+      const read = E("JSON.stringify(normTabList(tabs.map(tabListEntry)))");
+      return sent === read;
+    })());
+    T("35-10 프로젝트 없는 옛 서버 목록도 같은 모양으로 읽힌다", (() => {
+      const read = JSON.parse(E("JSON.stringify(normTabList([{id:'z', title:'옛'}]))"));
+      return JSON.stringify(read) === JSON.stringify([{id:"z", title:"옛", project:"기존 프로젝트"}]);
+    })());
+    T("35-11 서버 목록이 배열이 아닌 객체로 와도 읽는다",
+      E("normTabList({0:{id:'a',title:'x',project:'신규'}}).length") === 1);
+
+    /* --- 프로젝트 바꾸기 --- */
+    E("switchProject('신규')"); await wait(40);
+    T("35-12 프로젝트를 바꾸면 그 프로젝트의 첫 탭으로", E("activeTabId") === "p3");
+    T("35-13 탭 줄이 따라 바뀐다", tabTitles() === "새 세계,새 도시", tabTitles());
+    E("switchTab('p4')"); await wait(30);
+    E("switchProject('기존 프로젝트')"); await wait(30);
+    E("switchProject('신규')"); await wait(30);
+    T("35-14 돌아오면 마지막으로 보던 탭으로", E("activeTabId") === "p4");
+
+    /* --- 주소 --- */
+    T("35-15 주소는 #프로젝트/순번", decodeURIComponent(w.location.hash) === "#신규/2", decodeURIComponent(w.location.hash));
+    T("35-16 새 형식 주소로 탭을 찾는다", (() => {
+      E("location.hash = '#' + encodeURIComponent('외전 프로젝트') + '/1'");
+      return E("hashTarget()") === "p5";
+    })());
+    T("35-17 이름에 / 가 들어가도 마지막 / 에서 자른다", (() => {
+      E("tabs[4].project = '가/나'; location.hash = '#' + encodeURIComponent('가/나') + '/1'");
+      const ok = E("hashTarget()") === "p5";
+      E("tabs[4].project = '외전 프로젝트'");
+      return ok;
+    })());
+    T("35-18 옛 주소 #2 도 계속 열린다(전체 순번)", (() => {
+      E("location.hash = '#2'");
+      return E("hashTarget()") === "p2";
+    })());
+    T("35-19 없는 프로젝트 주소는 빈 값", (() => {
+      E("location.hash = '#' + encodeURIComponent('없는것') + '/1'");
+      return E("hashTarget()") === "";
+    })());
+    E("location.hash = ''; switchTab('p4'); renderTabs();"); await wait(30);
+
+    /* --- 새 탭·복제는 지금 프로젝트에 --- */
+    E("addTab()"); await wait(40);
+    T("35-20 새 탭은 지금 보고 있는 프로젝트에", E("curTab().project") === "신규" && E("tabsIn('신규').length") === 3);
+    E("duplicateTab(curTab())"); await wait(40);
+    T("35-21 복제도 같은 프로젝트에", E("curTab().project") === "신규" && E("tabsIn('신규').length") === 4);
+
+    /* --- 이름 변경 창에서 탭 옮기기 --- */
+    E("openRenameTab(curTab())"); await wait(40);
+    const rn = doc.getElementById("rnProj");
+    T("35-22 이름 변경 창에 프로젝트 칸", rn !== null && rn.value === "신규");
+    T("35-23 기존 프로젝트를 고를 수 있다", [...doc.querySelectorAll("#rnProjList option")].map(o => o.value).join(",") ===
+      "기존 프로젝트,신규,외전 프로젝트");
+    const movedId = E("activeTabId");
+    rn.value = "외전 프로젝트";
+    doc.querySelector(".ov [data-a=s]").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(50);
+    T("35-24 탭이 그 프로젝트로 옮겨진다", E("nodeById ? tabs.find(t => t.id === '" + movedId + "').project : ''") === "외전 프로젝트");
+    T("35-25 탭 줄이 옮겨간 프로젝트로 따라간다", doc.getElementById("projName").textContent === "외전 프로젝트");
+    E("doUndo()"); await wait(50);
+    T("35-26 옮기기는 되돌리기 한 단계", E("tabs.find(t => t.id === '" + movedId + "').project") === "신규");
+
+    /* --- 새 프로젝트 --- */
+    const before = E("tabs.length");
+    E("newProject()"); await wait(40);
+    doc.getElementById("npjName").value = "세 번째 이야기";
+    doc.querySelector(".ov [data-a=s]").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(60);
+    T("35-27 새 프로젝트는 첫 탭과 함께 생긴다", E("tabs.length") === before + 1 &&
+      E("curProject()") === "세 번째 이야기" && E("tabsIn('세 번째 이야기').length") === 1);
+    T("35-28 이미 있는 이름은 막는다", (() => {
+      E("newProject()");
+      doc.getElementById("npjName").value = "신규";
+      doc.querySelector(".ov [data-a=s]").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+      const n = E("tabs.length");
+      E("[...modalsEl.querySelectorAll('.ov')].forEach(closeModal);");
+      return n === before + 1;
+    })());
+    E("doUndo()"); await wait(60);
+    T("35-29 새 프로젝트도 되돌리기로 물린다", E("projectNames().includes('세 번째 이야기')") === false);
+
+    /* --- 이름 바꾸기 --- */
+    E("switchProject('신규')"); await wait(30);
+    const newCount = E("tabsIn('신규').length");
+    E("renameProject()"); await wait(40);
+    doc.getElementById("rpjName").value = "본편";
+    doc.querySelector(".ov [data-a=s]").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(50);
+    T("35-30 프로젝트의 탭이 모두 새 이름으로", E("tabsIn('본편').length") === newCount && E("tabsIn('신규').length") === 0);
+    T("35-31 이름 바꾸기가 헛 되돌리기 항목을 쌓지 않는다", (() => {
+      E("commit()");
+      return E("tabsIn('본편').every(t => !(undoMap[t.id]||[]).some(e => e.st.project === '신규'))");
+    })());
+    E("renameProject()"); await wait(40);
+    doc.getElementById("rpjName").value = "외전 프로젝트";
+    doc.querySelector(".ov [data-a=s]").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(50);
+    T("35-32 이미 있는 이름이면 합칠지 묻는다",
+      [...doc.querySelectorAll(".ov .dlg-h span")].some(e => e.textContent === "프로젝트 합치기"));
+    doc.querySelector(".ov [data-a=k]").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(50);
+    T("35-33 합치면 한 프로젝트가 된다", E("projectNames().includes('본편')") === false &&
+      E("tabsIn('외전 프로젝트').length") === newCount + 1);
+
+    /* --- 지우면 같은 프로젝트의 다른 탭으로 --- */
+    E("switchProject('외전 프로젝트')"); await wait(30);
+    const victim = E("activeTabId");
+    E("askDeleteTab(curTab())"); await wait(40);
+    doc.querySelector(".ov [data-a=k]").dispatchEvent(new w.MouseEvent("click", {bubbles:true}));
+    await wait(60);
+    T("35-34 탭을 지우면 같은 프로젝트의 탭으로 간다",
+      E("activeTabId") !== victim && E("curProject()") === "외전 프로젝트", E("curProject()"));
+
+    /* --- 보기 전용 방문자 --- */
+    E("setEditMode(false); openProjectMenu();"); await wait(30);
+    const menu = [...doc.querySelectorAll("#ctxMenu .cm-i")].map(e => e.textContent);
+    T("35-35 방문자도 프로젝트를 바꿔 볼 수 있다", menu.some(t => t.includes("기존 프로젝트")));
+    T("35-36 방문자에게는 만들기·이름 바꾸기가 없다", !menu.some(t => t.includes("새 프로젝트") || t.includes("이름 바꾸기")), menu);
+    E("closeCtx(); setEditMode(true);");
+    E("setEditMode(true); openProjectMenu();"); await wait(30);
+    T("35-37 편집 모드에서는 만들기·이름 바꾸기가 보인다",
+      [...doc.querySelectorAll("#ctxMenu .cm-i")].some(e => e.textContent.includes("새 프로젝트")));
+    E("closeCtx();");
   }
 
   done();

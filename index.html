@@ -131,6 +131,13 @@ textarea{resize:vertical;line-height:1.55}
   -webkit-background-clip:text;background-clip:text;color:transparent;
   padding:0 14px 6px 2px;user-select:none;text-shadow:0 0 24px rgba(212,169,71,.25);
 }
+/* 프로젝트 선택기 — 탭 줄보다 한 단계 위라 탭과 모양을 다르게 한다 */
+.proj-btn{flex:none;display:flex;align-items:center;gap:5px;max-width:220px;align-self:center;
+  font-size:12.5px;color:var(--text2);padding:4px 10px;margin:0 2px 5px;
+  border:1px solid var(--border);border-radius:9px;background:var(--bg3)}
+.proj-btn:hover{color:var(--text);border-color:var(--border2)}
+#projName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;font-weight:600}
+.proj-cv{color:var(--text3);font-size:10px;flex:none}
 #tabs{display:flex;gap:4px;flex-wrap:wrap;flex:1;min-width:0}
 .tab{
   display:flex;align-items:center;gap:2px;max-width:220px;
@@ -671,6 +678,7 @@ body.edit .ev:hover .ev-acts{display:inline-flex}
 
 <div id="tabbar">
   <div class="logo">LOREMAP</div>
+  <button id="projBtn" class="proj-btn" title="프로젝트 바꾸기">📁 <span id="projName"></span> <span class="proj-cv">▾</span></button>
   <div id="tabs"></div>
   <div class="tabacts">
     <button id="tabAdd" class="tabadd eo" title="세계관 추가">＋</button>
@@ -888,6 +896,30 @@ function propGet(n, k){
 /* 새 타입 key — 라벨과 독립적인 안정 식별자 */
 function newTypeKey(){ return 'ty' + (idC++); }
 
+/* ---------------- 프로젝트 — 탭들의 상위 묶음 ----------------
+   탭마다 프로젝트 이름 하나. 프로젝트 목록을 따로 두지 않고 탭들이 가진 이름의 집합으로 본다.
+   (빈 프로젝트는 없다 — 새 프로젝트는 첫 탭과 함께 생긴다.)
+   서버에서는 tabList 항목에 실린다. 탭 내용(tabs/{id})은 건드리지 않는다. */
+const DEFAULT_PROJECT = '기존 프로젝트';   // 프로젝트가 생기기 전의 탭은 모두 여기
+const PROJECT_MAX = 30;
+function normProject(p){
+  return String(p ?? '').trim().slice(0, PROJECT_MAX) || DEFAULT_PROJECT;
+}
+/* ⚠ 탭 목록 한 줄의 모양은 이 함수 하나로만 만든다.
+   초기 로드의 lastTabListJson(normTabList)과 편집 때 보내는 tl 이 한 글자라도 다르면
+   metaKey 때처럼 tabList 를 무한 재전송한다. 예전엔 같은 코드가 네 군데 흩어져 있었다. */
+function tabListEntry(t){
+  return {id: t.id, title: t.title ?? '무제', project: normProject(t.project)};
+}
+function curProject(){ return normProject(curTab()?.project); }
+/* 처음 나타난 순서대로 — tabs 배열 순서라 기기마다 같다 */
+function projectNames(){
+  const seen = [];
+  tabs.forEach(t => { const p = normProject(t.project); if(!seen.includes(p)) seen.push(p); });
+  return seen;
+}
+function tabsIn(p){ return tabs.filter(t => normProject(t.project) === p); }
+
 function sanitizeTab(t){
   /* 구버전 데이터에는 nodeTypes 가 없다 — 기본 7종으로 채우면 기존 node.type 이 그대로 맞는다 */
   if(!Array.isArray(t.nodeTypes) || !t.nodeTypes.length){
@@ -930,6 +962,7 @@ function sanitizeTab(t){
   if(!t.refImages) t.refImages = [];
   if(t.worldPrompt == null) t.worldPrompt = '';
   if(!t.title) t.title = '무제';
+  t.project = normProject(t.project);
   return t;
 }
 
@@ -1406,7 +1439,8 @@ function cleanTab(t){
     events: (t.events||[]).map(cleanEventLS),
     worldPrompt: t.worldPrompt ?? '',
     nodeTypes: normTypes(t.nodeTypes || DEFAULT_TYPES),
-    refImages: (t.refImages||[]).slice(0,3)
+    refImages: (t.refImages||[]).slice(0,3),
+    project: normProject(t.project)
   };
 }
 
@@ -1870,7 +1904,7 @@ function normTabList(v){
   if(!Array.isArray(arr)){
     arr = Object.keys(arr).sort((a,b)=>(+a)-(+b)).map(k => arr[k]);
   }
-  return arr.filter(x => x && x.id).map(x => ({id:x.id, title:x.title ?? '무제'}));
+  return arr.filter(x => x && x.id).map(tabListEntry);
 }
 
 /* §2-3: worldmind/{tabs:[...]} 배열 통짜 포맷 → 항목별 경로 구조로 손실 없이 변환 */
@@ -1887,7 +1921,7 @@ async function migrateIfOld(v){
 
   const tabList = [], tabsObj = {};
   oldTabs.filter(Boolean).map(t => sanitizeTab(deepCopy(t))).forEach(t => {
-    tabList.push({id:t.id, title:t.title});
+    tabList.push(tabListEntry(t));
     const nodes = {}, edges = {}, events = {};
     t.nodes.forEach(n => { nodes[n.id] = {...normFB('nodes',n), _w:FB_SID}; });
     t.edges.forEach(e => { edges[e.id] = {...normFB('edges',e), _w:FB_SID}; });
@@ -1900,10 +1934,11 @@ async function migrateIfOld(v){
   return nv;
 }
 
-function buildTabFromServer(id, title, v){
+function buildTabFromServer(id, title, v, project){
   const tv = (v && v.tabs && v.tabs[id]) || {};
   return sanitizeTab({
     id,
+    project,                                // 서버 tabList 가 권위
     title: tv.meta?.title ?? title,
     worldPrompt: tv.meta?.worldPrompt ?? '',
     nodeTypes: tv.meta?.nodeTypes,          // 없으면 sanitizeTab 이 기본 7종으로 채운다
@@ -1916,7 +1951,7 @@ function buildTabFromServer(id, title, v){
 }
 
 function adoptAll(list, v){
-  tabs = list.map(({id,title}) => buildTabFromServer(id, title, v));
+  tabs = list.map(({id,title,project}) => buildTabFromServer(id, title, v, project));
   activeTabId = tabs[0]?.id ?? null;
   markDirty();
 }
@@ -1925,9 +1960,9 @@ function adoptAll(list, v){
 function initReconcile(list, v){
   const local = {}; tabs.forEach(t => local[t.id] = t);
   const next = [];
-  list.forEach(({id,title}) => {
+  list.forEach(({id,title,project}) => {
     if(local[id]){ next.push(local[id]); delete local[id]; }
-    else next.push(buildTabFromServer(id, title, v));
+    else next.push(buildTabFromServer(id, title, v, project));
   });
   Object.values(local).forEach(t => next.push(t));
   tabs = next;
@@ -1940,10 +1975,10 @@ function applyRemoteTabList(list){
   if(!list.length) return; // 빈 목록 수신은 무시(방어)
   const local = {}; tabs.forEach(t => local[t.id] = t);
   const next = [], fetches = [];
-  list.forEach(({id,title}) => {
-    if(local[id]){ local[id].title = title; next.push(local[id]); delete local[id]; }
+  list.forEach(({id,title,project}) => {
+    if(local[id]){ local[id].title = title; local[id].project = project; next.push(local[id]); delete local[id]; }
     else{
-      const stub = sanitizeTab({id, title, nodes:[], edges:[], events:[], worldPrompt:'', refImages:[]});
+      const stub = sanitizeTab({id, title, project, nodes:[], edges:[], events:[], worldPrompt:'', refImages:[]});
       next.push(stub); fetches.push(stub);
     }
   });
@@ -2051,7 +2086,7 @@ async function sweepOrphanTabs(){
       renderAll(); zoomFit(); refreshOpenPanels();
     }
     renderTabs(); markDirty();
-    const tl = tabs.map(t => ({id:t.id, title:t.title ?? '무제'}));
+    const tl = tabs.map(tabListEntry);
     lastTabListJson = JSON.stringify(tl);
     fbRoot.child('tabList').set(tl).then(fbWriteOk, err => {
       lastTabListJson = prevJson;
@@ -2207,7 +2242,7 @@ function fbSyncActive(){
   const tab = curTab(); if(!tab) return;
 
   /* 탭 목록 */
-  const tl = tabs.map(t => ({id:t.id, title:t.title ?? '무제'}));
+  const tl = tabs.map(tabListEntry);
   const tj = JSON.stringify(tl);
   if(tj !== lastTabListJson){
     const prev = lastTabListJson;
@@ -2283,7 +2318,7 @@ async function pushAllToFB(){
       await fbRoot.child('tabs/' + t.id).set({meta:{...metaFB(t), _w:FB_SID}, nodes, edges, events});
     }
     /* ⚠ 사라진 탭의 tabs/{id} 삭제와 tabList 갱신을 한 번의 원자적 update 로 (반쪽 상태 차단) */
-    const tl = tabs.map(t => ({id:t.id, title:t.title ?? '무제'}));
+    const tl = tabs.map(tabListEntry);
     const prevJson = lastTabListJson;
     lastTabListJson = JSON.stringify(tl);
     const upd = {tabList: tl};
@@ -5411,7 +5446,10 @@ function openVisitModal(node){
 function renderTabs(){
   syncTabLocation();
   tabsEl.innerHTML = '';
-  tabs.forEach(t => {
+  const cur = curProject();
+  const pn = document.getElementById('projName');
+  if(pn) pn.textContent = cur;
+  tabsIn(cur).forEach(t => {                  // 다른 프로젝트의 탭은 탭 줄에 올리지 않는다
     const el = document.createElement('div');
     el.className = 'tab' + (t.id === activeTabId ? ' act' : '');
     el.innerHTML =
@@ -5430,8 +5468,19 @@ function renderTabs(){
    ⚠ 순번이라 앞의 탭을 지우면 예전 주소가 다른 탭을 가리킨다. */
 const LAST_TAB_KEY = 'wm_lasttab';
 function hashTarget(){
+  const raw = String(location.hash || '').replace(/^#/, '');
+  if(!raw) return '';
+  /* 새 형식 #프로젝트/순번. 프로젝트 이름 안의 / 는 %2F 로 인코딩돼 있으므로
+     디코딩 전에 마지막 / 에서 자른다(디코딩부터 하면 이름 속 / 에서 잘못 잘린다). */
+  const cut = raw.lastIndexOf('/');
+  if(cut > 0 && /^\d{1,4}$/.test(raw.slice(cut + 1))){
+    let p = '';
+    try{ p = decodeURIComponent(raw.slice(0, cut)); }catch(_){}
+    if(p) return tabsIn(normProject(p))[+raw.slice(cut + 1) - 1]?.id || '';
+  }
+  /* 옛 형식 — 이미 퍼진 주소(#2 · #탭id · #탭이름)도 계속 연다 */
   let h = '';
-  try{ h = decodeURIComponent(String(location.hash || '').replace(/^#/, '')).trim(); }catch(_){}
+  try{ h = decodeURIComponent(raw).trim(); }catch(_){}
   if(!h) return '';
   if(/^\d{1,4}$/.test(h)) return tabs[+h - 1]?.id || '';      // #2 = 두 번째 탭
   const byId = tabs.find(t => t.id === h);                     // #i1005 = 그 탭
@@ -5439,16 +5488,129 @@ function hashTarget(){
   return tabs.find(t => t.title === h)?.id || '';              // #이름 도 받는다
 }
 /* 주소와 '마지막으로 보던 탭'을 지금 상태에 맞춘다. 값이 그대로면 아무것도 쓰지 않는다. */
+const PROJTAB_KEY = 'wm_projtab';          // 프로젝트마다 마지막으로 보던 탭
+function loadProjTab(){
+  try{
+    const o = JSON.parse(localStorage.getItem(PROJTAB_KEY) || '{}');
+    return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+  }catch(_){ return {}; }
+}
+const safeDecode = v => { try{ return decodeURIComponent(v); }catch(_){ return v; } };
 function syncTabLocation(){
   if(!activeTabId) return;
-  const i = tabs.findIndex(t => t.id === activeTabId);
-  if(i < 0) return;
-  const want = '#' + (i + 1);
-  if(location.hash !== want){
+  const t = curTab(); if(!t) return;
+  const p = normProject(t.project);
+  const j = tabsIn(p).findIndex(x => x.id === activeTabId);
+  if(j < 0) return;
+  const want = '#' + encodeURIComponent(p) + '/' + (j + 1);
+  /* 브라우저가 퍼센트 인코딩을 다르게 돌려줄 수 있어 풀어서 비교한다 —
+     매번 다르다고 보면 replaceState 를 계속 불러 사파리에서 막힌다 */
+  if(location.hash !== want && safeDecode(location.hash) !== safeDecode(want)){
     /* replaceState 라 뒤로가기 기록을 늘리지 않고 hashchange 도 안 뜬다 */
     try{ history.replaceState(null, '', location.pathname + location.search + want); }catch(_){}
   }
   try{ localStorage.setItem(LAST_TAB_KEY, activeTabId); }catch(_){}
+  try{
+    const m = loadProjTab();
+    if(m[p] !== activeTabId){
+      m[p] = activeTabId;
+      const alive = new Set(projectNames());          // 사라진 프로젝트의 기억은 버린다
+      Object.keys(m).forEach(k => { if(!alive.has(k)) delete m[k]; });
+      localStorage.setItem(PROJTAB_KEY, JSON.stringify(m));
+    }
+  }catch(_){}
+}
+
+/* ---------------- 프로젝트 조작 ---------------- */
+function openProjectMenu(){
+  const r = document.getElementById('projBtn').getBoundingClientRect();
+  const cur = curProject();
+  const items = projectNames().map(p => ({
+    t: (p === cur ? '✓ ' : '\u3000') + p + '  · ' + tabsIn(p).length,
+    cb: () => switchProject(p)
+  }));
+  items.push({sep:true});
+  items.push({t:'＋ 새 프로젝트', eo:true, cb: newProject});
+  items.push({t:'✏️ 이 프로젝트 이름 바꾸기', eo:true, cb: renameProject});
+  openCtx(items, r.left, r.bottom + 4);
+}
+/* 그 프로젝트에서 마지막으로 보던 탭으로, 없으면 첫 탭으로 */
+function switchProject(p){
+  const list = tabsIn(p);
+  if(!list.length) return;
+  const remembered = loadProjTab()[p];
+  switchTab((list.find(t => t.id === remembered) || list[0]).id);
+  renderTabs();                               // 같은 탭이면 switchTab 이 바로 돌아오므로
+}
+function newProject(){
+  if(!reqEdit()) return;
+  const ov = openModal({
+    title:'새 프로젝트',
+    body:`<div><label>프로젝트 이름</label>` +
+      `<input id="npjName" maxlength="${PROJECT_MAX}" placeholder="예: 신규 세계관"></div>` +
+      `<div class="hint">프로젝트는 첫 세계관 탭과 함께 만들어집니다. 되돌리기(Ctrl+Z)로 물릴 수 있습니다.</div>`,
+    footer:`<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="s">만들기</button>`
+  });
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  const save = () => {
+    const v = String(ov.querySelector('#npjName').value || '').trim().slice(0, PROJECT_MAX);
+    if(!v){ toast('이름을 입력해주세요', true); return; }
+    if(projectNames().includes(v)){ toast('이미 있는 프로젝트입니다', true); return; }
+    closeModal(ov);
+    const t = makeDefaultTab();
+    t.project = v;
+    tabs.push(t);
+    renderTabs();
+    switchTab(t.id);
+    lastMap[t.id] = snapTab(t); commit();    // addTab 과 같은 순서 — 구조 스택에 적재
+    renderTabs();
+    toast(`프로젝트 '${v}' 를 만들었습니다`);
+  };
+  ov.querySelector('[data-a=s]').onclick = save;
+  ov.querySelector('#npjName').addEventListener('keydown', e => { if(e.key === 'Enter') save(); });
+  setTimeout(() => ov.querySelector('#npjName').focus(), 30);
+}
+/* 이름 바꾸기는 되돌리기 대상이 아니다 — 여러 탭에 한꺼번에 걸쳐서,
+   탭별 되돌리기로는 지금 탭만 물려 프로젝트가 둘로 쪼개진다. 이름을 다시 바꾸면 된다. */
+function renameProject(){
+  if(!reqEdit()) return;
+  const old = curProject();
+  const ov = openModal({
+    title:'프로젝트 이름 바꾸기',
+    body:`<div><label>프로젝트 이름</label>` +
+      `<input id="rpjName" maxlength="${PROJECT_MAX}" value="${escHtml(old)}"></div>` +
+      `<div class="hint">탭 ${tabsIn(old).length}개가 함께 옮겨집니다. 이미 있는 이름을 쓰면 두 프로젝트가 합쳐집니다.</div>`,
+    footer:`<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="s">저장</button>`
+  });
+  ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
+  const run = v => {
+    tabs.forEach(t => {
+      if(normProject(t.project) !== old) return;
+      t.project = v;
+      /* 기준점을 새 상태로 — 안 그러면 다음 commit 이 탭마다 헛 되돌리기 항목을 쌓는다 */
+      if(lastMap[t.id]) lastMap[t.id] = snapTab(t);
+    });
+    markDirty(); fbSyncActive(); renderTabs();
+    toast(`프로젝트 이름을 '${v}' 로 바꿨습니다`);
+  };
+  const save = () => {
+    const v = String(ov.querySelector('#rpjName').value || '').trim().slice(0, PROJECT_MAX);
+    if(!v){ toast('이름을 입력해주세요', true); return; }
+    if(v === old){ closeModal(ov); return; }
+    closeModal(ov);
+    if(projectNames().includes(v)){
+      confirmModal({
+        title:'프로젝트 합치기', ok:'합치기',
+        html:`'<b>${escHtml(v)}</b>' 프로젝트가 이미 있습니다.<br>` +
+          `'${escHtml(old)}' 의 탭 ${tabsIn(old).length}개를 그리로 합칠까요?`,
+        onOk:() => run(v)
+      });
+      return;
+    }
+    run(v);
+  };
+  ov.querySelector('[data-a=s]').onclick = save;
+  ov.querySelector('#rpjName').addEventListener('keydown', e => { if(e.key === 'Enter') save(); });
 }
 
 function switchTab(id){
@@ -5467,6 +5629,7 @@ function switchTab(id){
 function addTab(){
   if(!reqEdit()) return;
   const t = makeDefaultTab();
+  t.project = curProject();  // 새 탭은 지금 보고 있는 프로젝트에
   tabs.push(t);
   renderTabs();
   switchTab(t.id);         // attachTab → 빈 스냅샷 → 새 탭 전체 push
@@ -5482,6 +5645,7 @@ function duplicateTab(src){
   const base = cleanTab(src);
   const nt = sanitizeTab({
     id: gid(), title: '복사_' + (src.title || '무제'),
+    project: src.project,                   // 복제는 같은 프로젝트에 둔다
     nodes:[], edges:[], events:[],
     worldPrompt: base.worldPrompt,
     refImages: [...base.refImages]
@@ -5514,9 +5678,10 @@ function askDeleteTab(t){
     onOk:() => {
       const idx = tabs.findIndex(x => x.id === t.id);
       const prevActive = activeTabId, prevJson = lastTabListJson;
+      const sameProj = tabsIn(normProject(t.project)).filter(x => x.id !== t.id);
       tabs = tabs.filter(x => x.id !== t.id);
       if(activeTabId === t.id){
-        activeTabId = tabs[0].id;
+        activeTabId = (sameProj[0] || tabs[0]).id;   // 같은 프로젝트에 남은 탭이 있으면 그리로
         clearSel();
         if(fbReady) attachTab(activeTabId);
         renderAll(); zoomFit(); refreshOpenPanels();
@@ -5525,7 +5690,7 @@ function askDeleteTab(t){
       /* ⚠ tabs/{id} 제거와 tabList 갱신이 갈라지면 다음 로드 때 '내용 없는 빈 탭'으로 되살아난다.
          RTDB 다중 경로 update 는 원자적이므로 한 번의 update 로 묶는다. */
       if(fbReady && fbRoot && editMode){
-        const tl = tabs.map(x => ({id:x.id, title:x.title ?? '무제'}));
+        const tl = tabs.map(tabListEntry);
         lastTabListJson = JSON.stringify(tl);
         fbRoot.update({['tabs/' + t.id]: null, tabList: tl}).then(fbWriteOk, err => {
           lastTabListJson = prevJson;
@@ -5547,8 +5712,12 @@ function askDeleteTab(t){
 
 function openRenameTab(t){
   const ov = openModal({
-    title:'세계관 이름 변경',
-    body:`<div><label>이름</label><input id="rnName" maxlength="40" value="${escHtml(t.title || '')}"></div>`,
+    title:'세계관 이름 · 프로젝트',
+    body:`<div><label>이름</label><input id="rnName" maxlength="40" value="${escHtml(t.title || '')}"></div>` +
+      `<div><label>프로젝트</label>` +
+      `<input id="rnProj" maxlength="${PROJECT_MAX}" list="rnProjList" value="${escHtml(normProject(t.project))}">` +
+      `<datalist id="rnProjList">${projectNames().map(p => `<option value="${escHtml(p)}">`).join('')}</datalist>` +
+      `<div class="hint">다른 프로젝트 이름을 고르면 이 탭이 그리로 옮겨집니다. 새 이름을 쓰면 새 프로젝트가 생깁니다.</div></div>`,
     footer:`<button class="btn" data-a="c">취소</button><button class="btn pri" data-a="s">저장</button>`
   });
   ov.querySelector('[data-a=c]').onclick = () => closeModal(ov);
@@ -5556,10 +5725,12 @@ function openRenameTab(t){
     const v = ov.querySelector('#rnName').value.trim();
     if(!v){ toast('이름을 입력해주세요', true); return; }
     t.title = v;
+    t.project = normProject(ov.querySelector('#rnProj').value);   // 옮기기는 이 탭 하나 — 되돌리기 한 단계
     commit(); renderTabs(); closeModal(ov);
   };
   ov.querySelector('[data-a=s]').onclick = save;
   ov.querySelector('#rnName').addEventListener('keydown', e => { if(e.key === 'Enter') save(); });
+  ov.querySelector('#rnProj').addEventListener('keydown', e => { if(e.key === 'Enter') save(); });
 }
 
 /* ==================================================================
@@ -6122,6 +6293,7 @@ function bindStaticUI(){
     handleRefFile(e.target.files[0]);
     e.target.value = '';
   });
+  $('#projBtn').onclick = openProjectMenu;
   $('#chatSend').onclick = sendChat;
   /* 카드가 매번 새로 그려지므로 위임으로 받는다 */
   chatLogEl.addEventListener('click', e => {
